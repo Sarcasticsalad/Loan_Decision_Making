@@ -2,91 +2,105 @@
     {
         "audited-2079": {
             "Total Current Assets": 143081,
-            "Inventory": 0,
+            "Total Non-Current Assets": 4275,
+            "Total Assets": 147356,
             "Total Current Liabilities": 110841,
-            "Total Non-Current Liabilities": 1206,
+            "Total Non-Current Liabilities": 7206,
             "Total Liabilities": 0,
             "Total Equity": 35307,
+            "Total Liabilities and Equity": 147356,
             "Long-term Debt": 0,
+            "Inventory": 0,
+            "Stocks Trading": 53940,
             "Operating Income": 0,
             "Gross Profit": 2655,
             "Interest Expense": -7347,
             "Net Operating Profit": -7330,
             "Depreciation": -842,
-            "Amortization": 0,
-            "Stocks Trading": 53940
+            "Amortization": 0
         }
     },
     {
         "audited-2080": {
             "Total Current Assets": 179411,
-            "Inventory": 0,
+            "Total Non-Current Assets": 3728,
+            "Total Assets": 183138,
             "Total Current Liabilities": 155900,
             "Total Non-Current Liabilities": 867,
             "Total Liabilities": 0,
             "Total Equity": 26742,
+            "Total Liabilities and Equity": 183509,
             "Long-term Debt": 0,
+            "Inventory": 0,
+            "Stocks Trading": 47789,
             "Operating Income": 0,
             "Gross Profit": -1424,
             "Interest Expense": -6751,
             "Net Operating Profit": -10004,
             "Depreciation": -843,
-            "Amortization": 0,
-            "Stocks Trading": 47789
+            "Amortization": 0
         }
     },
     {
         "projected-2081": {
             "Total Current Assets": 132932,
-            "Inventory": 0,
+            "Total Non-Current Assets": 3409,
+            "Total Assets": 136340,
             "Total Current Liabilities": 93593,
-            "Total Non-Current Liabilities": 0,
+            "Total Non-Current Liabilities": 15800,
             "Total Liabilities": 0,
-            "Total Equity": 42747,
+            "Total Equity": 26947,
+            "Total Liabilities and Equity": 136340,
             "Long-term Debt": 0,
+            "Inventory": 0,
+            "Stocks Trading": 61292,
             "Operating Income": 0,
             "Gross Profit": 1445,
             "Interest Expense": -6765,
             "Net Operating Profit": -7091,
             "Depreciation": -690,
-            "Amortization": 0,
-            "Stocks Trading": 61292
+            "Amortization": 0
         }
     },
     {
         "projected-2082": {
             "Total Current Assets": 138767,
-            "Inventory": 0,
+            "Total Non-Current Assets": 2854,
+            "Total Assets": 141621,
             "Total Current Liabilities": 97558,
-            "Total Non-Current Liabilities": 0,
+            "Total Non-Current Liabilities": 15800,
             "Total Liabilities": 0,
-            "Total Equity": 44063,
+            "Total Equity": 28263,
+            "Total Liabilities and Equity": 141621,
             "Long-term Debt": 0,
+            "Inventory": 0,
+            "Stocks Trading": 61583,
             "Operating Income": 0,
             "Gross Profit": 2529,
             "Interest Expense": -5625,
-            "Net Operating Profit": -4289,
+            "Net Operating Profit": -4829,
             "Depreciation": -555,
-            "Amortization": 0,
-            "Stocks Trading": 61583
+            "Amortization": 0
         }
     },
     {
         "projected-2083": {
             "Total Current Assets": 138783,
-            "Inventory": 0,
+            "Total Non-Current Assets": 2406,
+            "Total Assets": 141189,
             "Total Current Liabilities": 95868,
-            "Total Non-Current Liabilities": 0,
+            "Total Non-Current Liabilities": 15800,
             "Total Liabilities": 0,
-            "Total Equity": 45321,
+            "Total Equity": 29521,
             "Long-term Debt": 0,
+            "Inventory": 0,
+            "Stocks Trading": 62066,
             "Operating Income": 0,
             "Gross Profit": 2921,
             "Interest Expense": -5568,
             "Net Operating Profit": -4285,
             "Depreciation": -447,
-            "Amortization": 0,
-            "Stocks Trading": 62066
+            "Amortization": 0
         }
     }
   ]
