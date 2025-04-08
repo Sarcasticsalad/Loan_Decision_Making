@@ -141,6 +141,42 @@ def safe_division(numerator, denominator):
         return float('nan')
     return numerator / denominator
 
+def normal_page():
+    st.info("Please upload a JSON file with financial data to begin analysis.")
+    st.write("The expected JSON structure should contain multiple years of audited and projected financial data.")
+        
+    # Show sample data structure
+    st.subheader("Expected JSON Structure")
+    sample_structure = """
+        {
+            "audited-2023": {
+                "Total Current Assets": 179411,
+                "Inventory": 0,
+                "Total Current Liabilities": 155900,
+                ...
+            },
+            "audited-2024": {
+                "Total Current Assets": 185000,
+                "Inventory": 0,
+                "Total Current Liabilities": 152000,
+                ...
+            },
+            "projected-2025": {
+                "Total Current Assets": 195000,
+                "Inventory": 0,
+                "Total Current Liabilities": 150000,
+                ...
+            },
+            "projected-2026": {
+                "Total Current Assets": 210000,
+                "Inventory": 0,
+                "Total Current Liabilities": 145000,
+                ...
+            }
+        }
+        """
+    st.code(sample_structure, language="json")
+    
 # TODO: -ve EBITDA: do not proceed with calculations
 # TODO: Total Assets is not equal to Total Liabilities + Equity: do not proceed with calculations
 def calculate_ebitda(data):
@@ -153,7 +189,6 @@ def calculate_ebitda(data):
     # For financial analysis, we make interest, depreciation, and amortization positive
     # as we're adding them back to the operating profit
     return operating_profit + interest + depreciation + amortization
-
 
 def calculate_leverage_ratio(data):
     """Calculate Leverage Ratio (Total Liabilities / Total Equity)."""
@@ -171,7 +206,6 @@ def calculate_leverage_ratio(data):
     total_equity = find_value(data, FIELD_MAPPINGS["total_equity"])
     return safe_division(total_liabilities, total_equity)
 
-
 def calculate_icr(data):
     """Calculate Interest Coverage Ratio (EBIT / Interest Expense)."""
     ebitda = calculate_ebitda(data)
@@ -179,7 +213,6 @@ def calculate_icr(data):
     interest_expense = abs(find_value(data, FIELD_MAPPINGS["interest_expense"]))
     # return safe_division(operating_profit, interest_expense)
     return safe_division(ebitda, interest_expense)
-
 
 def calculate_dscr(data, principal_repayment=0):
     """Calculate Debt Service Coverage Ratio (EBITDA / (Interest Expense + Principal Repayment))."""
@@ -219,6 +252,7 @@ def get_status(ratio_type, value):
 
 def display_metric(label, value, status, message, color):
     """Display a metric with appropriate color and message."""
+
     if pd.isna(value):
         formatted_value = "N/A"
     else:
@@ -232,7 +266,7 @@ def display_metric(label, value, status, message, color):
         st.error(f"**{label}:** {formatted_value} | **Status:** {status.capitalize()} | ***{message}***")
     else:
         st.info(f"**{label}:** {formatted_value} | **Status:** {status.capitalize()} | ***{message}***")
-
+    
 def extract_year_from_key(key):
     """Extract year from a key like 'audited-2023' or 'projected-2025'."""
     match = re.search(r'(\d{4})', key)
@@ -250,6 +284,8 @@ def is_projected(key):
 
 def calculate_ratios_for_data(data, principal_repayment=0):
     """Calculate all financial ratios for a given data set."""
+    print(f"calculate_ratios_for_data - {principal_repayment}")
+    # print(f"Data :{data}")
     ratios = {
         "EBITDA": {"value": calculate_ebitda(data)},
         "Leverage Ratio": {"value": calculate_leverage_ratio(data)},
@@ -265,11 +301,14 @@ def calculate_ratios_for_data(data, principal_repayment=0):
             ratio_name, ratios[ratio_name]["value"]
         )
     
+    print(f"calculate_ratios_for_data - Ratios: {[(ratio_name,ratios[ratio_name]['value']) for ratio_name in ratios]}")
+    print(f"{'***********'*2}")
+    
     return ratios
 
 def create_multi_year_chart(years_data, ratio_name):
     """Create a chart showing a specific ratio across multiple years."""
-    print(f"Creating chart for {ratio_name}..")
+    # print(f"Creating chart for {ratio_name}..")
     years = list(years_data.keys())
     years.sort(key=extract_year_from_key)
     
@@ -277,19 +316,18 @@ def create_multi_year_chart(years_data, ratio_name):
     audited_years = [y for y in years if is_audited(y)]
     projected_years = [y for y in years if is_projected(y)]
 
-    
     # TODO: Audited Years
-    
     # Extract values for the specified ratio
     audited_values = [years_data[y][ratio_name]["value"] for y in audited_years]
     projected_values = [years_data[y][ratio_name]["value"] for y in projected_years]
     
-    print("create_multi_year_chart Years:", years)
+    # print("create_multi_year_chart Years:", years)
     # print("Year Data:", years_data)
-    print("create_multi_year_chart Audited Years:", audited_years)
+    # print("create_multi_year_chart Audited Years:", audited_years)
     # print("Audited Values:", audited_values)
-    print("create_multi_year_chart Projected Years:", projected_years)
-    
+    # print("create_multi_year_chart Projected Years:", projected_years)
+    # color_continuous_scale=["red", "yellow", "green"],
+
     # Create the figure
     fig = go.Figure()
     if audited_years:
@@ -298,8 +336,8 @@ def create_multi_year_chart(years_data, ratio_name):
             y=audited_values,
             mode='lines+markers',
             name='Audited',
-            line=dict(color='blue', width=4, dash='dash'),
-            marker=dict(size=10)
+            line=dict(color='blue', width=2, dash='dash'),
+            marker=dict(size=8)
         ))
     
     if projected_years:
@@ -308,8 +346,8 @@ def create_multi_year_chart(years_data, ratio_name):
             y=projected_values,
             mode='lines+markers',
             name='Projected',
-            line=dict(color='orange', width=4, dash='dash'),
-            marker=dict(size=10)
+            line=dict(color='orange', width=2, dash='dash'),
+            marker=dict(size=8)
         ))
     
     # Add threshold lines based on ratio type
@@ -657,14 +695,206 @@ def display_stress_test_results(data, stress_factors):
     
     return stress_test_results
 
+def create_financial_ratios_dataframe(data):
+    """
+    Create a DataFrame with financial ratios and trend indicators
+    
+    Parameters:
+    - data: List of dictionaries with ratio_name, year, and value
+    
+    Returns:
+    - DataFrame with trend indicators
+    """
+    # Convert to DataFrame
+    df = pd.DataFrame(data)
+    
+    # Create pivot table with ratios as rows and years as columns
+    pivot_df = df.pivot(index='ratio_name', columns='year', values='value')
+    
+    # Sort columns in chronological order
+    year_order = ['audited-2079', 'audited-2080', 'projected-2081', 'projected-2082', 'projected-2083']
+    pivot_df = pivot_df[year_order]
+    
+    # Create a DataFrame to store trend indicators
+    trend_df = pd.DataFrame(index=pivot_df.index, columns=pivot_df.columns)
+    
+    # Fill first column with neutral indicator
+    trend_df.iloc[:, 0] = '—'
+    
+    # For remaining columns, compare with previous column and add trend indicators
+    for i in range(1, len(pivot_df.columns)):
+        for j in range(len(pivot_df.index)):
+            ratio = pivot_df.index[j]
+            current = pivot_df.iloc[j, i]
+            previous = pivot_df.iloc[j, i-1]
+            
+            # For Leverage Ratio, lower is better (↑ for decrease, ↓ for increase)
+            if ratio == 'Leverage Ratio':
+                trend_df.iloc[j, i] = '↑' if current < previous else '↓'
+            else:
+                # For all other metrics, higher is better (↑ for increase, ↓ for decrease)
+                trend_df.iloc[j, i] = '↑' if current > previous else '↓'
+    
+    # Format the values based on ratio type
+    formatted_pivot = pivot_df.copy()
+    
+    for idx in formatted_pivot.index:
+        for col in formatted_pivot.columns:
+            value = formatted_pivot.loc[idx, col]
+            
+            if idx == 'EBITDA':
+                formatted_pivot.loc[idx, col] = f"{value:,.0f}"
+            else:
+                formatted_pivot.loc[idx, col] = f"{value:.2f}"
+    
+    # Combine formatted values with trend indicators
+    result_df = formatted_pivot.copy()
+    
+    for idx in result_df.index:
+        for col in result_df.columns:
+            value = formatted_pivot.loc[idx, col]
+            trend = trend_df.loc[idx, col]
+            result_df.loc[idx, col] = f"{value} {trend}"
+    
+    # Reset index to make ratio_name a column
+    result_df = result_df.reset_index()
+    
+    return result_df
+
+def collect_financial_data(years_ratios):
+    """
+    Collects financial data from a nested dictionary structure
+    
+    Parameters:
+    - years_ratios: Dictionary with year keys and ratio dictionaries as values
+    
+    Returns:
+    - List of dictionaries with ratio_name, year, and value
+    """
+    all_years_trend = {}
+    ratios = list(list(years_ratios.values())[0].keys())
+    years = list(years_ratios.keys())
+    all_years_trend['ratio_name'] = ratios
+
+    for year in years:
+        values = [years_ratios[year][ratio]["value"] for ratio in ratios]
+        all_years_trend[year] = values
+    
+    return pd.DataFrame(all_years_trend)
+
+# Function to add trend indicators to the DataFrame
+def add_trend_indicators(df):
+    # Make a copy to avoid modifying the original
+    result_df = df.copy()
+    
+    # Sort year columns chronologically
+    year_columns = [col for col in df.columns if col != 'ratio_name']
+    sorted_years = sorted(year_columns)
+    
+    # Process each ratio row
+    for i, row in df.iterrows():
+        ratio = row['ratio_name']
+        
+        # Loop through years and compare with previous
+        for j in range(1, len(sorted_years)):
+            current_year = sorted_years[j]
+            prev_year = sorted_years[j-1]
+            
+            current_value = row[current_year]
+            prev_value = row[prev_year]
+            
+            # Determine trend direction (for Leverage Ratio, lower is better)
+            if ratio == 'Leverage Ratio':
+                trend = ' ↑' if current_value < prev_value else ' ↓'
+            else:
+                trend = ' ↑' if current_value > prev_value else ' ↓'
+            
+            # Format the value based on ratio type
+            if ratio == 'EBITDA':
+                formatted_value = f"{current_value:,.0f}"
+            else:
+                formatted_value = f"{current_value:.2f}"
+            
+            # Add trend indicator
+            result_df.at[i, current_year] = f"{formatted_value} {trend}"
+        
+        # Format the first year (no trend comparison)
+        first_year = sorted_years[0]
+        if ratio == 'EBITDA':
+            result_df.at[i, first_year] = f"{row[first_year]:,.0f} ➖"
+        else:
+            result_df.at[i, first_year] = f"{row[first_year]:.2f} ➖"
+    
+    return result_df
+
+def year_wise_financial_statements(all_years_data, years_ratios):
+    """Display financial statements for each year and calculate ratios."""
+
+    all_years_data_keys = all_years_data.keys()
+    selected_ratios = []
+    with st.expander("Select Year to Analyze", expanded=False):
+                selected_year = st.radio(  # selected_year = st.selectbox(
+                    "**Choose year:**",
+                    options=list(all_years_data_keys),
+                    index=0,
+                    help="Select the year for which you want to analyze financial ratios.",
+                    horizontal=True
+                )
+                
+                # Display selected year analysis
+                selected_data = all_years_data[selected_year]
+                selected_ratios = years_ratios[selected_year]
+
+                # print(f"Selected ratios: {selected_ratios}")
+                num_columns = 3  # Display and adjust column numbers
+                columns = st.columns(num_columns)
+                count_green, count_yellow, count_red = 0,0,0
+
+                for i, (ratio_name, ratio_data) in enumerate(selected_ratios.items()):
+                    with columns[i % num_columns]:
+                        display_metric(
+                            ratio_name,
+                            ratio_data["value"],
+                            ratio_data["status"],
+                            ratio_data["message"],
+                            ratio_data["color"]
+                        )
+                        if selected_ratios[ratio_name]["color"] == "green":
+                            count_green += 1
+                        if selected_ratios[ratio_name]["color"] == "yellow":
+                            count_yellow += 1
+                        if selected_ratios[ratio_name]["color"] == "red":
+                            count_red += 1
+                st.divider()
+                
+                if count_green or count_yellow or count_red:
+                    if count_green == 0 and count_yellow == 0 and count_red == 0:
+                        st.warning("**Overview: No financial ratios were calculated for the selected year.**")
+
+                    if count_green > 3:
+                        st.success("**Overview: The company is in -EXCELLENT- standing based on the selected financial ratios.**")
+                    if count_green >=2 and (count_green + count_yellow) >= 3:
+                        st.success("**Overview: The company is in -GOOD- standing based on the selected financial ratios.**")        
+                    elif (count_green + count_yellow) < 3:
+                        st.error("**Overview: The company is in -POOR- standing based on the selected financial ratios.**")
+                    else:
+                        st.warning("*Overview: The company is in -POOR- standing based on the selected financial ratios.*")
+
+    return selected_ratios
+
+def all_trends_dataframe(years_ratios):
+    financial_df = collect_financial_data(years_ratios)
+    data_with_trend = add_trend_indicators(financial_df)
+    st.dataframe(data_with_trend, use_container_width=True)
+
 def main():
-    st.title("Decision Making - Loans")
+    st.title("Decision Making - Loans") 
     # print(FIELD_MAPPINGS)
     # Sidebar for file upload
     with st.sidebar:
         st.header("Upload Financial Data")
         uploaded_file = st.file_uploader("Upload JSON file", type=["json"])
-        principal_repayment = st.number_input("**Principal Repayment** (for DSCR)", min_value=0.0, value=0.0, step=1000.0, help="Enter the principal repayment amount for DSCR calculation. DSCR depends on the principal repayment amount.")
+        principal_repayment = st.number_input("**Principal Repayment** (for DSCR: projected)", min_value=0.0, value=0.0, step=1000.0, help="Enter the principal repayment amount for DSCR calculation. DSCR depends on the principal repayment amount.")
 
     if uploaded_file is not None:
         try:
@@ -686,119 +916,129 @@ def main():
             else:
                 st.error("Invalid JSON format. Expected a list or dictionary structure.")
                 return
-            
+
+            # Metadata for the app
+            all_years_data_keys = all_years_data.keys()
+
+            # TESTING
+            repayment_values = {}
+            for year in sorted(all_years_data_keys, key=extract_year_from_key):
+                repayment_values[year] = st.number_input(
+                    f"**Principal Repayment for {year}**", 
+                    min_value=0.0, 
+                    value=0.0, 
+                    step=1000.0, 
+                    key=f"repayment_{year}",
+                    help="Enter the principal repayment amount for DSCR calculation."
+                )
+            print("Repayment Values:", repayment_values)
+
+
             # Calculate ratios for all years
             years_ratios = {}
             for year_key, data in all_years_data.items():
-                years_ratios[year_key] = calculate_ratios_for_data(data, principal_repayment if is_projected(year_key) else 0)
-            
+                print(f"Year Key: {year_key} - calculate_ratios_for_data")
+                # TODO
+                # Get year-specific repayment
+                year_repayment = repayment_values.get(year_key, 0)
+                # # Calculate DSCR with the specific repayment value
+                years_ratios[year_key] = calculate_ratios_for_data(data, year_repayment)
+
+                # calculate_ratios_for_data(data, principal_repayment=0):
+                
+                # years_ratios[year_key] = calculate_ratios_for_data(data, principal_repayment if is_projected(year_key) else 0)   # TODO ORIG
+                # print("Years Ratios:", years_ratios)
+
+            # print(f"Years Ratios: {years_ratios}")
+
+            # Metadata for the app
+            years_ratios_keys = years_ratios.keys()
+            audited_years = [y for y in years_ratios_keys if is_audited(y)]
+            projected_years = [y for y in years_ratios_keys if is_projected(y)]
+            audited_years.sort(key=extract_year_from_key)
+            projected_years.sort(key=extract_year_from_key)
+
+            print(f"--All years data keys: {all_years_data_keys}")
+            print(f"--Years ratio keys: {years_ratios_keys}")
+            print(f"--Audited years: {audited_years}")
+            print(f"--Projected years: {projected_years}")
+
             # Display year selector
-            st.header("Select Year to Analyze")
-            selected_year = st.selectbox(
-                "**Select Year to Analyze**",
-                options=list(all_years_data.keys()),
-                index=0
-            )
-            
-            # Display selected year analysis
-            selected_data = all_years_data[selected_year]
-            selected_ratios = years_ratios[selected_year]
-            
-            st.subheader(f"Financial Ratios - {selected_year}")
-            for ratio_name, ratio_data in selected_ratios.items():
-                display_metric(
-                    ratio_name,
-                    ratio_data["value"],
-                    ratio_data["status"],
-                    ratio_data["message"],
-                    ratio_data["color"]
-                )
+            st.subheader("Select Financial Statements to Analyze")
+            selected_ratios = year_wise_financial_statements(all_years_data, years_ratios)
             
             # Multi-year trend analysis
-            st.header("Projected - Trend Analysis")
-            
-            # Create tabs for each ratio
-            ratio_keys = selected_ratios.keys()
-            ratio_tabs = st.tabs(list(ratio_keys))
-            
-            for i, ratio_name in enumerate(ratio_keys):
-                with ratio_tabs[i]:
-                    chart = create_multi_year_chart(years_ratios, ratio_name)
-                    st.plotly_chart(chart, use_container_width=True)
-                    
-                    # Get values for audited and projected years
-                    audited_years = [y for y in years_ratios.keys() if is_audited(y)]
-                    projected_years = [y for y in years_ratios.keys() if is_projected(y)]
-                    
-                    # Sort years
-                    audited_years.sort(key=extract_year_from_key)
-                    projected_years.sort(key=extract_year_from_key)
-                    
-                    # Only show trend analysis if we have multiple years
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        if len(audited_years) > 1:
-                            st.write("**Audited Data Trend:**")
-                            first_year = audited_years[0]
-                            last_year = audited_years[-1]
-                            first_value = years_ratios[first_year][ratio_name]["value"]
-                            last_value = years_ratios[last_year][ratio_name]["value"]
-                            
-                            if not pd.isna(first_value) and not pd.isna(last_value) and first_value != 0:
-                                change_pct = (last_value - first_value) / abs(first_value) * 100
-                                trend = "increasing" if change_pct > 0 else "decreasing"
+            st.subheader("All Actual & Projected - Trend Analysis")
+            # TODO Show all years data # Create the DataFrame with trend indicators
+            with st.expander("Numerical Trend Analysis", expanded=False):
+                all_trends_dataframe(years_ratios)
+
+            with st.expander("Trends Visualization", expanded=False):
+                ratio_keys = selected_ratios.keys()
+                ratio_tabs = st.tabs(list(ratio_keys))
+
+                for i, ratio_name in enumerate(ratio_keys):
+                    with ratio_tabs[i]:
+                        chart = create_multi_year_chart(years_ratios, ratio_name)
+                        st.plotly_chart(chart, use_container_width=True)
+                        
+                        # Only show trend analysis if we have multiple years
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            if len(audited_years) >= 1:
+                                # st.write("**Audited Data Trend:**")
+                                first_year = audited_years[0]
+                                last_year = audited_years[-1]
+                                first_value = years_ratios[first_year][ratio_name]["value"]
+                                last_value = years_ratios[last_year][ratio_name]["value"]
                                 
-                                # For leverage ratio, decreasing is good
-                                is_positive = (change_pct > 0 and ratio_name != "Leverage Ratio") or (change_pct < 0 and ratio_name == "Leverage Ratio")
+                                if not pd.isna(first_value) and not pd.isna(last_value) and first_value != 0:
+                                    change_pct = (last_value - first_value) / abs(first_value) * 100
+                                    trend = "increasing" if change_pct > 0 else "decreasing"
+                                    
+                                    # For leverage ratio, decreasing is good
+                                    is_positive = (change_pct > 0 and ratio_name != "Leverage Ratio") or (change_pct < 0 and ratio_name == "Leverage Ratio")
+                                    
+                                    if is_positive:
+                                        st.success(f"The **{ratio_name}** has been **{trend}** by **{abs(change_pct):.2f}%** from **{first_year}** to **{last_year}**, which is positive.")
+                                    else:
+                                        st.error(f"The **{ratio_name}** has been **{trend}** by **{abs(change_pct):.2f}%** from **{first_year}** to **{last_year}**, which needs attention.")
+                        with col2:
+                            if len(projected_years) >= 1:
+                                # st.write("**Projected Data Trend:**")
+                                first_year = projected_years[0]
+                                last_year = projected_years[-1]
+                                first_value = years_ratios[first_year][ratio_name]["value"]
+                                last_value = years_ratios[last_year][ratio_name]["value"]
                                 
-                                if is_positive:
-                                    st.success(f"The {ratio_name} has been {trend} by {abs(change_pct):.2f}% from {first_year} to {last_year}, which is positive.")
-                                else:
-                                    st.error(f"The {ratio_name} has been {trend} by {abs(change_pct):.2f}% from {first_year} to {last_year}, which needs attention.")
-                    with col2:
-                        if len(projected_years) > 1:
-                            st.write("**Projected Data Trend:**")
-                            first_year = projected_years[0]
-                            last_year = projected_years[-1]
-                            first_value = years_ratios[first_year][ratio_name]["value"]
-                            last_value = years_ratios[last_year][ratio_name]["value"]
-                            
-                            if not pd.isna(first_value) and not pd.isna(last_value) and first_value != 0:
-                                change_pct = (last_value - first_value) / abs(first_value) * 100
-                                trend = "increase" if change_pct > 0 else "decrease"
-                                
-                                # For leverage ratio, decreasing is good
-                                is_positive = (change_pct > 0 and ratio_name != "Leverage Ratio") or (change_pct < 0 and ratio_name == "Leverage Ratio")
-                                
-                                if is_positive:
-                                    st.success(f"The {ratio_name} is projected to {trend} by {abs(change_pct):.2f}% from {first_year} to {last_year}, which is positive.")
-                                else:
-                                    st.warning(f"The {ratio_name} is projected to {trend} by {abs(change_pct):.2f}% from {first_year} to {last_year}, which may need attention.")
-            
-            st.divider()
+                                if not pd.isna(first_value) and not pd.isna(last_value) and first_value != 0:
+                                    change_pct = (last_value - first_value) / abs(first_value) * 100
+                                    trend = "increase" if change_pct > 0 else "decrease"
+                                    
+                                    # For leverage ratio, decreasing is good
+                                    is_positive = (change_pct > 0 and ratio_name != "Leverage Ratio") or (change_pct < 0 and ratio_name == "Leverage Ratio")
+                                    
+                                    if is_positive:
+                                        st.success(f"The **{ratio_name}** is projected to **{trend}** by **{abs(change_pct):.2f}%** from **{first_year}** to **{last_year}**, which is positive.")
+                                    else:
+                                        st.warning(f"The **{ratio_name}** is projected to **{trend}** by **{abs(change_pct):.2f}%** from **{first_year}** to **{last_year}**, which may need attention.")
+
             # Stress Testing Section
-            st.header("Stress Testing Analysis", help="Analyze how changes in key financial metrics would affect the company's financial ratios.")
-            
+            st.subheader("Stress Testing Analysis (projected)", help="Analyze how changes in key financial metrics would affect the company's financial ratios.")
             # Allow user to select which year to stress test (preferably a projected year)
-            projected_years = [y for y in all_years_data.keys() if is_projected(y)]
-            if not projected_years:
-                projected_years = list(all_years_data.keys())
-            
-            stress_year = st.selectbox(
-                "**Select Year for Stress Testing:**",
-                options=projected_years,
-                index=0 if projected_years else 0,
-                help="Select the year for which you want to perform stress testing.",
-                
-            )
-            
-            # st.write(f"""
-            # This section shows how changes in key financial metrics would affect the company's financial ratios for {stress_year}. 
-            # Adjust the sliders below to simulate different scenarios.
-            # """)
-            
+            # projected_years = [y for y in all_years_data.keys() if is_projected(y)]
+            # if not projected_years:
+            #     projected_years = list(all_years_data.keys())
             # Add stress testing parameters in an expander in the main body
-            with st.expander("Stress Test Parameters", expanded=True):
+            with st.expander("Select Year for Stress Testing", expanded=True):
+                stress_year = st.radio(
+                    "**Select Projected Years for Stress Testing:**",
+                    options=projected_years,
+                    index=0 if projected_years else 0,
+                    horizontal=True,
+                    help="Select the year for which you want to perform stress testing.",
+                )
+
                 # Add preset scenarios
                 st.subheader("Stress Test Presets")
                 preset_col1, preset_col2, preset_col3 = st.columns(3)
@@ -877,160 +1117,141 @@ def main():
                 # Call the stress test display function
                 stress_test_results = display_stress_test_results(all_years_data[stress_year], stress_factors)
             
-            st.divider()
-            # Overall Recommendation
-            st.header("Overall Recommendation")
-            
-            # Get the most recent audited and projected years
-            audited_years = [y for y in all_years_data.keys() if is_audited(y)]
-            projected_years = [y for y in all_years_data.keys() if is_projected(y)]
-            
-            audited_years.sort(key=extract_year_from_key)
-            projected_years.sort(key=extract_year_from_key)
-            print(f"main Audited Years: {audited_years}")
-            print(f"main Projected Years: {projected_years}")
+            st.subheader("Audited to Projected Trend Analysis")
+            with st.expander("Audited (recent) to Projected (final)", expanded=False):
+                latest_audited = audited_years[-1] if audited_years else None  # TODO: Handle case with no audited : data audited_years[-1]
+                latest_projected = projected_years[-1] if projected_years else None #TODO: Handle case with no projected : data projected_years[-1]
+                # latest_projected = projected_years[0] if projected_years else None
 
-            latest_audited = audited_years[-1] if audited_years else None
-            latest_projected = projected_years[-1] if projected_years else None
-            
-            if latest_projected:
-                # Count how many ratios are in good standing for projected data
-                projected_good_count = sum(1 for ratio in years_ratios[latest_projected].values() if ratio["color"] == "green")
                 
-                # Loan recommendation based on proportion of good ratios in projected data
-                good_ratio_threshold = len(years_ratios[latest_projected]) / 2  # At least half of ratios should be good
-                
-                if projected_good_count >= good_ratio_threshold:
-                    st.success("✅ **Loan Recommendation: APPROVE**")
-                    st.write(f"The company shows positive financial health in {projected_good_count} out of {len(years_ratios[latest_projected])} key metrics for the latest projected data ({latest_projected}).")
+                if latest_projected:
+                    # # Count how many ratios are in good standing for projected data
+                    # projected_good_count = sum(1 for ratio in years_ratios[latest_projected].values() if ratio["color"] == "green")
+                    # # Loan recommendation based on proportion of good ratios in projected data
+                    # good_ratio_threshold = len(years_ratios[latest_projected]) / 2  # At least half of ratios should be good
                     
-                    # Highlight areas of improvement if any
-                    areas_to_monitor = [name for name, data in years_ratios[latest_projected].items() if data["color"] != "green"]
-                    if areas_to_monitor:
-                        st.info(f"**Areas to Monitor:** {', '.join(areas_to_monitor)}")
-                else:
-                    st.error("⚠️ **Loan Recommendation: CAUTION**")
-                    st.write(f"The company shows challenges in {len(years_ratios[latest_projected]) - projected_good_count} out of {len(years_ratios[latest_projected])} key metrics for the latest projected data ({latest_projected}).")
-                    
-                    # Highlight strong areas if any
-                    strong_areas = [name for name, data in years_ratios[latest_projected].items() if data["color"] == "green"]
-                    if strong_areas:
-                        st.info(f"**Strong Areas:** {', '.join(strong_areas)}")
-                
-                # Show trend analysis between latest audited and projected
-                st.divider()
-
-                if latest_audited:
-                    st.subheader("Audited to Projected Trend Analysis")
-                    
-                    # Create a DataFrame to show the change from audited to projected
-                    trend_data = []
-                    for ratio_name in years_ratios[latest_audited]:
-                        audited_value = years_ratios[latest_audited][ratio_name]["value"]
-                        projected_value = years_ratios[latest_projected][ratio_name]["value"]
+                    # if projected_good_count >= good_ratio_threshold:
+                    #     st.success("✅ **Loan Recommendation: APPROVE**")
+                    #     st.write(f"The company shows positive financial health in {projected_good_count} out of {len(years_ratios[latest_projected])} key metrics for the latest projected data ({latest_projected}).")
                         
-                        if not pd.isna(audited_value) and not pd.isna(projected_value):
-                            change = projected_value - audited_value
-                            change_percent = safe_division(change, abs(audited_value)) * 100
+                    #     # Highlight areas of improvement if any
+                    #     areas_to_monitor = [name for name, data in years_ratios[latest_projected].items() if data["color"] != "green"]
+                    #     if areas_to_monitor:
+                    #         st.info(f"**Areas to Monitor:** {', '.join(areas_to_monitor)}")
+                    # else:
+                    #     st.error("⚠️ **Loan Recommendation: CAUTION**")
+                    #     st.write(f"The company shows challenges in {len(years_ratios[latest_projected]) - projected_good_count} out of {len(years_ratios[latest_projected])} key metrics for the latest projected data ({latest_projected}).")
+                        
+                    #     # Highlight strong areas if any
+                    #     strong_areas = [name for name, data in years_ratios[latest_projected].items() if data["color"] == "green"]
+                    #     if strong_areas:
+                    #         st.info(f"**Strong Areas:** {', '.join(strong_areas)}")
+                    
+                    # # Show trend analysis between latest audited and projected
+                    # st.divider()
+
+                    if latest_audited:
+                        st.subheader("Audited to Projected Trend Analysis")
+                    
+                        # Create a DataFrame to show the change from audited to projected
+                        trend_data = []
+                        for ratio_name in years_ratios[latest_audited]:
+                            audited_value = years_ratios[latest_audited][ratio_name]["value"]
+                            projected_value = years_ratios[latest_projected][ratio_name]["value"]
                             
-                            trend_data.append({
-                                "Ratio": ratio_name,
-                                f"Audited: {latest_audited}": audited_value,
-                                f"Projected: {latest_projected}": projected_value,
-                                "Change": change,
-                                "Change %": change_percent
-                            })
-                    
-                    if trend_data:
-                        trend_df = pd.DataFrame(trend_data)
-                        
-                        # Create a visualization for trend
-                        fig = px.bar(
-                            trend_df,
-                            x="Ratio",
-                            y="Change %",
-                            title=f"Change from: '{latest_audited}' to '{latest_projected}' (% change)",
-                            color="Change %",
-                            color_continuous_scale=["red", "yellow", "green"],
-                            labels={"Change %": "Change (%)", "Ratio": "Financial Ratio"}
-                        )
-                        
-                        st.plotly_chart(fig, use_container_width=True)
-                        
-                        # Display the trend table
-                        st.write(f"**Detailed Trend Analysis** - from: {latest_audited} to {latest_projected} (% change)")
-                        
-                        # Format the DataFrame for display
-                        formatted_df = trend_df.copy()
-                        for col in [f"Audited: {latest_audited}", f"Projected: {latest_projected}", "Change"]:
-                            formatted_df[col] = formatted_df[col].map(lambda x: f"{x:.2f}")
-                        formatted_df["Change %"] = formatted_df["Change %"].map(lambda x: f"{x:.2f}%")
-                        
-                        st.dataframe(formatted_df, use_container_width=True)
-                        
-                        # Key insights
-                        st.write(f"**Key Insights** - from: {latest_audited} to {latest_projected} (% change)")
-                        
-                        improvements = trend_df[trend_df["Change"] > 0]["Ratio"].tolist()
-                        declines = trend_df[trend_df["Change"] < 0]["Ratio"].tolist()
-
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            if improvements:
-                                st.success(f"**Improvements Expected:** {', '.join(improvements)}")
-                            
-                            if declines:
-                                st.warning(f"**Declining Metrics:** {', '.join(declines)}")
-                        with col2:
-                        # Best and worst performing metrics
-                            if not trend_df.empty:
-                                best_metric = trend_df.loc[trend_df["Change %"].idxmax()]["Ratio"]
-                                worst_metric = trend_df.loc[trend_df["Change %"].idxmin()]["Ratio"]
+                            if not pd.isna(audited_value) and not pd.isna(projected_value):
+                                change = projected_value - audited_value
+                                change_percent = safe_division(change, abs(audited_value)) * 100
                                 
-                                st.info(f"**Best Performing Metric:** {best_metric}")
-                                st.info(f"**Metric Requiring Most Attention:** {worst_metric}")
-            else:
-                st.warning("No projected data available for loan recommendation.")
+                                trend_data.append({
+                                    "Ratio": ratio_name,
+                                    f"Audited: {latest_audited}": audited_value,
+                                    f"Projected: {latest_projected}": projected_value,
+                                    "Change": change,
+                                    "Change %": change_percent
+                                })
+                        
+                        if trend_data:
+                            trend_df = pd.DataFrame(trend_data)
+                            
+                            # Create a visualization for trend
+                            fig = px.bar(
+                                trend_df,
+                                x="Ratio",
+                                y="Change %",
+                                title=f"Change from: '{latest_audited}' to '{latest_projected}' (% change)",
+                                color="Change %",
+                                color_continuous_scale=["red", "yellow", "green"],
+                                labels={"Change %": "Change (%)", "Ratio": "Financial Ratio"}
+                            )
+                            
+                            st.plotly_chart(fig, use_container_width=True)
+                            
+                            # Display the trend table
+                            st.write(f"**Detailed Trend Analysis** - from: {latest_audited} to {latest_projected} (% change)")
+                            
+                            # Format the DataFrame for display
+                            formatted_df = trend_df.copy()
+                            for col in [f"Audited: {latest_audited}", f"Projected: {latest_projected}", "Change"]:
+                                formatted_df[col] = formatted_df[col].map(lambda x: f"{x:.2f}")
+                            formatted_df["Change %"] = formatted_df["Change %"].map(lambda x: f"{x:.2f}%")
+                            
+                            st.dataframe(formatted_df, use_container_width=True)
+                            
+                            # Key insights
+                            st.write(f"**Key Insights** - from: {latest_audited} to {latest_projected} (% change)")
+                            
+                            improvements = trend_df[trend_df["Change"] > 0]["Ratio"].tolist()
+                            declines = trend_df[trend_df["Change"] < 0]["Ratio"].tolist()
+
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                if improvements:
+                                    st.success(f"**Improvements Expected:** {', '.join(improvements)}")
+                                
+                                if declines:
+                                    st.warning(f"**Declining Metrics:** {', '.join(declines)}")
+                            with col2:
+                            # Best and worst performing metrics
+                                if not trend_df.empty:
+                                    best_metric = trend_df.loc[trend_df["Change %"].idxmax()]["Ratio"]
+                                    worst_metric = trend_df.loc[trend_df["Change %"].idxmin()]["Ratio"]
+                                    
+                                    st.info(f"**Best Performing Metric:** {best_metric}")
+                                    st.info(f"**Metric Requiring Most Attention:** {worst_metric}")
+                    # st.divider() 
+                    # # Count how many ratios are in good standing for projected data
+                    # projected_good_count = sum(1 for ratio in years_ratios[latest_projected].values() if ratio["color"] == "green")
+                    # # Loan recommendation based on proportion of good ratios in projected data
+                    # good_ratio_threshold = len(years_ratios[latest_projected]) / 2  # At least half of ratios should be good
+                    
+                    # if projected_good_count >= good_ratio_threshold:
+                    #     st.success("✅ **Loan Recommendation: APPROVE**")
+                    #     st.write(f"The company shows positive financial health in {projected_good_count} out of {len(years_ratios[latest_projected])} key metrics for the latest projected data ({latest_projected}).")
+                        
+                    #     # Highlight areas of improvement if any
+                    #     areas_to_monitor = [name for name, data in years_ratios[latest_projected].items() if data["color"] != "green"]
+                    #     if areas_to_monitor:
+                    #         st.info(f"**Areas to Monitor:** {', '.join(areas_to_monitor)}")
+                    # else:
+                    #     st.error("⚠️ **Loan Recommendation: CAUTION**")
+                    #     st.write(f"The company shows challenges in {len(years_ratios[latest_projected]) - projected_good_count} out of {len(years_ratios[latest_projected])} key metrics for the latest projected data ({latest_projected}).")
+                        
+                    #     # Highlight strong areas if any
+                    #     strong_areas = [name for name, data in years_ratios[latest_projected].items() if data["color"] == "green"]
+                    #     if strong_areas:
+                    #         st.info(f"**Strong Areas:** {', '.join(strong_areas)}")
+                    
+                    # Show trend analysis between latest audited and projected
+                else:
+                    st.warning("No projected data available for loan recommendation.")
         
         except Exception as e:
             st.error(f"An error occurred: {e}")
             st.write("Please check the JSON format and try again.")
     else:
         # Display instructions when no file is uploaded
-        st.info("Please upload a JSON file with financial data to begin analysis.")
-        st.write("The expected JSON structure should contain multiple years of audited and projected financial data.")
-        
-        # Show sample data structure
-        st.subheader("Expected JSON Structure")
-        sample_structure = """
-        {
-            "audited-2023": {
-                "Total Current Assets": 179411,
-                "Inventory": 0,
-                "Total Current Liabilities": 155900,
-                ...
-            },
-            "audited-2024": {
-                "Total Current Assets": 185000,
-                "Inventory": 0,
-                "Total Current Liabilities": 152000,
-                ...
-            },
-            "projected-2025": {
-                "Total Current Assets": 195000,
-                "Inventory": 0,
-                "Total Current Liabilities": 150000,
-                ...
-            },
-            "projected-2026": {
-                "Total Current Assets": 210000,
-                "Inventory": 0,
-                "Total Current Liabilities": 145000,
-                ...
-            }
-        }
-        """
-        st.code(sample_structure, language="json")
+        normal_page()
 
 if __name__ == "__main__":
     main()
