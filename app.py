@@ -15,6 +15,28 @@ st.set_page_config(
     layout="wide"
 )
 
+ACCEPT_RATIO_PARAM = 6 # 6
+DESIRABLE_RATIO_PARAM = (ACCEPT_RATIO_PARAM/2) # 3
+REJECT_RATIO_PARAM = DESIRABLE_RATIO_PARAM # 3
+APPROVED_GREEN = ":green[**APPROVED: In principal approval subject to approve from concerned authority**]"
+CONSIDERABLE_AMBER= ":orange[**In principal approval subject to aligning ratios ( highlighted in red) to acceptable level.**]"
+REJECTED_RED = ":red[**REJECTED**]"
+
+# Check Field 'balance.json' , update ratio function, add standards for ratios
+
+# def notes():
+#     operating_profit = find_value(data, FIELD_MAPPINGS["net_operating_profit"])
+#     interest = abs(find_value(data, FIELD_MAPPINGS["interest_expense"]))
+#     depreciation = abs(find_value(data, FIELD_MAPPINGS["depreciation"]))
+#     amortization = abs(find_value(data, FIELD_MAPPINGS["amortization"]))
+#     current_assets = find_value(data, FIELD_MAPPINGS["total_current_assets"])
+#     total_current_liabilities = find_value(data, FIELD_MAPPINGS["total_current_liabilities"])
+#     total_liabilities = find_value(data, FIELD_MAPPINGS["total_liabilities"])
+#     total_equity = find_value(data, FIELD_MAPPINGS["total_equity"])
+#     inventory = find_value(data, FIELD_MAPPINGS["inventory"])
+#     Principal_Repayment
+
+
 # Config for field mappings (handles different naming conventions)
 FIELD_MAPPINGS_old = {
     "inventory": ["Inventory", "stocks-trading", "Stocks Trading", "stocks trading", "stock_trading", "Stock Trading", "Stocks-Trading"],
@@ -67,6 +89,12 @@ STANDARDS = {
         "strong": {"min": 0, "max": 4, "message": "Good leverage level (≤ 4)", "color": "yellow"},
         "high": {"min": 4, "max": float('inf'), "message": "High leverage level (> 4)", "color": "green"},
         "weak": {"min": float('-inf'), "max": 0, "message": "Negative leverage level", "color": "red"}
+    },
+    "Gear Ratio": {
+        "strong": {"min": 0, "max": 0.5, "message": "Low gearing (≤ 0.5) – Strong financial structure", "color": "green"},
+        "moderate": {"min": 0.5, "max": 1.0, "message": "Moderate gearing (0.5 – 1.0) – Acceptable leverage", "color": "yellow"},
+        "high": {"min": 1.0, "max": float('inf'), "message": "High gearing (> 1.0) – Risk of over-leverage", "color": "red"},
+        "invalid": {"min": float('-inf'),"max": 0, "message": "Negative gearing ratio – Check input values", "color": "gray"}
     },
     "ICR": {
         "strong": {"min": 1.0, "max": float('inf'), "message": "Sufficient ability to cover interest expenses (> 1)", "color": "yellow"},
@@ -142,6 +170,9 @@ def safe_division(numerator, denominator):
     return numerator / denominator
 
 def normal_page():
+    # Balance Sheet: Statement of Financial Position
+    # Profit and Loss account: Statement of Profit and Loss Account
+
     st.info("Please upload a JSON file with financial data to begin analysis.")
     st.write("The expected JSON structure should contain multiple years of audited and projected financial data.")
         
@@ -175,20 +206,79 @@ def normal_page():
             }
         }
         """
-    st.code(sample_structure, language="json")
+    
+    calculations="""
+        {
+            "EBITDA":["net operating profit","interest expense","depreciation","amortization"],
+            "Leverage":["total liabilities","total equity"],
+            "ICR":["EBITDA","interest expense"],
+            "DSCR":["EBITDA","interest expense","principal repayment"],
+            "CR":["total current assets","total current liabilities"],
+            "QR":["total current assets","inventory","current liabilities"]
+        }
+        """
+    # Statement of Financial Position 
+    # Statement of Profit and Loss Account
+
+    fields="""
+        {
+            "BalanceSheet_PL": [
+                "net operating profit",
+                "interest expense",
+                "depreciation",
+                "amortization",
+                "total liabilities",
+                "total equity",
+                "total current liabilities",
+                "total current assets",
+                "inventory"
+            ],
+            "Input":"principal repayment"
+        }
+        """
+    # Finance Cost
+    # Financial Charges: Int Exp
+    # # Financing Charge, Borrowing Cost
+    # Profit from Operation/; net op
+
+    with st.expander("Sample Structure"):
+        st.code(sample_structure, language="json")
+    with st.expander("Balance Sheet and PL"):
+        st.code(calculations,language="json")
+        st.code(fields,language="json")
     
 # TODO: -ve EBITDA: do not proceed with calculations
 # TODO: Total Assets is not equal to Total Liabilities + Equity: do not proceed with calculations
 def calculate_ebitda(data):
     """Calculate EBITDA (Earnings Before Interest, Taxes, Depreciation, and Amortization)."""
-    operating_profit = find_value(data, FIELD_MAPPINGS["net_operating_profit"])
+    # CASE 1:
+    operating_profit = abs(find_value(data, FIELD_MAPPINGS["net_operating_profit"])) # shivam" profit/loss (Before)
     interest = abs(find_value(data, FIELD_MAPPINGS["interest_expense"]))
     depreciation = abs(find_value(data, FIELD_MAPPINGS["depreciation"]))
     amortization = abs(find_value(data, FIELD_MAPPINGS["amortization"]))
-    
+    taxation = abs(find_value(data, FIELD_MAPPINGS["taxation"]))
+    administration_expense = abs(find_value(data, FIELD_MAPPINGS["administration_expense"]))
+
+    # print(f"EBITDA1: {operating_profit} {interest} {depreciation} {amortization}")
     # For financial analysis, we make interest, depreciation, and amortization positive
     # as we're adding them back to the operating profit
-    return operating_profit + interest + depreciation + amortization
+    # return operating_profit + interest + depreciation + amortization
+
+    # CASE 2: Profit after tax: was inside net_operating_profit
+    # "net_operating_profit": [
+    #     "Net Operating Profit", 
+    #     "operating profit", "operating_profit", "net operating profit", "Net Income", "net income", 
+    #     "Net Operating Income", "net operating income", "PAT", "Net Profit", 
+    #     "Profit for the Year"
+    #   ],
+    
+    # Profit After Tax + Taxation + Interest Expense + Depreciation + Administration Expense
+    profit_after_tax = abs(find_value(data,FIELD_MAPPINGS["profit_after_tax"]))
+    
+    # print(f"EBITDA2: {profit_after_tax} {taxation} {administration_expense}")
+    return profit_after_tax + taxation + interest + depreciation + administration_expense
+
+    # return operating_profit + taxation + interest + depreciation + administration_expense
 
 def calculate_leverage_ratio(data):
     """Calculate Leverage Ratio (Total Liabilities / Total Equity)."""
@@ -212,25 +302,55 @@ def calculate_leverage_ratio(data):
     
     return safe_division(total_liabilities, total_equity)
 
+def calculate_gear_ratio(data):
+    """Calculate Gear Ratio (Term Loan and Finance / Ttoal Equity)."""
+    term_loan = find_value(data, FIELD_MAPPINGS["long_term_debt"]) # Long term Debt
+    total_equity = abs(find_value(data, FIELD_MAPPINGS["total_equity"]))
+    if not isinstance(total_equity,(int,float)):
+        return st.error("Data is not complete (total_equity is missing)")
+    
+    # print(f"Term Loan {term_loan} - {total_equity}")
+    return safe_division(term_loan, total_equity)
+
+# TODO: ICR
 def calculate_icr(data):
     """Calculate Interest Coverage Ratio (EBIT / Interest Expense)."""
     ebitda = calculate_ebitda(data)
     if not isinstance(ebitda,(int,float)):
         return st.error("Could not proceed with ICR calculation (EBITDA is missing)")
-    # operating_profit = find_value(data, FIELD_MAPPINGS["net_operating_profit"])
     
-    interest_expense = abs(find_value(data, FIELD_MAPPINGS["interest_expense"]))
+    interest_expense = find_value(data, FIELD_MAPPINGS["interest_expense"])
     if not isinstance(interest_expense,(int,float)):
         return st.error("Could not proceed with ICR calculation (Interest Expense is missing)")
+    abs_interest_expense = abs(interest_expense)
+    # Case: 1
+    # return safe_division(ebitda, interest_expense)
+
+    # Case: 2
+    depreciation = find_value(data, FIELD_MAPPINGS["depreciation"])
+    amortization = find_value(data, FIELD_MAPPINGS["amortization"])
+    operating_profit = find_value(data, FIELD_MAPPINGS["net_operating_profit"])
+    val = abs(operating_profit)-(abs_interest_expense+abs(amortization)+abs(depreciation))
+    return safe_division(val,interest_expense)
+
     
-    return safe_division(ebitda, interest_expense)
 
 def calculate_dscr(data, principal_repayment=0):
     """Calculate Debt Service Coverage Ratio (EBITDA / (Interest Expense + Principal Repayment))."""
-    ebitda = calculate_ebitda(data)
-    interest_expense = abs(find_value(data, FIELD_MAPPINGS["interest_expense"]))
+    # ebitda = calculate_ebitda(data)
+    interest_expense = find_value(data, FIELD_MAPPINGS["interest_expense"])
     debt_service = interest_expense + principal_repayment
-    return safe_division(ebitda, debt_service)
+    # return safe_division(ebitda, debt_service)
+
+    # Case: 2
+    abs_interest_expense = abs(interest_expense)
+    depreciation = abs(find_value(data, FIELD_MAPPINGS["depreciation"]))
+    amortization = abs(find_value(data, FIELD_MAPPINGS["amortization"]))
+    operating_profit = abs(find_value(data, FIELD_MAPPINGS["net_operating_profit"]))
+    # val = operating_profit-(interest_expense+amortization+depreciation)
+    val = abs(operating_profit)-(abs_interest_expense+abs(amortization)+abs(depreciation))
+
+    return safe_division(val,(interest_expense+principal_repayment))
 
 def calculate_cr(data):
     """Calculate Current Ratio (Current Assets / Current Liabilities)."""
@@ -245,13 +365,14 @@ def calculate_qr(data):
     current_liabilities = find_value(data, FIELD_MAPPINGS["total_current_liabilities"])
     return safe_division(current_assets - inventory, current_liabilities)
 
+
 def get_status(ratio_type, value):
     """Determine status of ratio based on standards with range support."""
     if pd.isna(value):
         return "Invalid", "Unable to calculate ratio (division by zero or missing data)", "gray"
     
     # Get standards for this ratio type
-    standards = STANDARDS[ratio_type]
+    standards = STANDARDS[ratio_type]   # update with balancesheet and ratio formula.
     
     # Check each category's range
     for category, criteria in standards.items():
@@ -296,10 +417,11 @@ def is_projected(key):
 def calculate_ratios_for_data(data, principal_repayment=0):
     """Calculate all financial ratios for a given data set."""
     # print(f"calculate_ratios_for_data - {principal_repayment}")
-    # print(f"Data :{data}")
+    print(f"Data :{data}")
     ratios = {
         "EBITDA": {"value": calculate_ebitda(data)},
         "Leverage Ratio": {"value": calculate_leverage_ratio(data)},
+        "Gear Ratio": {"value": calculate_gear_ratio(data)},
         "ICR": {"value": calculate_icr(data)},
         "DSCR": {"value": calculate_dscr(data, principal_repayment)},
         "CR": {"value": calculate_cr(data)},
@@ -390,6 +512,13 @@ def create_multi_year_chart(years_data, ratio_name):
         fig.add_shape(
             type="line", line=dict(color="green", width=2, dash="dot"),
             y0=0, y1=0, x0=years[0], x1=years[-1]
+        )
+    elif ratio_name == "Gear Ratio":
+        # Upper threshold for Gear Ratio
+        threshold = standards["strong"]["max"] # strong, high, weak
+        fig.add_shape(
+            type="line", line=dict(color="red", width=2, dash="dot"),
+            y0=threshold, y1=threshold, x0=years[0], x1=years[-1]
         )
     elif ratio_name == "Leverage Ratio":
         # Upper threshold for Leverage Ratio
@@ -836,10 +965,17 @@ def add_trend_indicators(df):
             prev_value = row[prev_year]
             
             # Determine trend direction (for Leverage Ratio, lower is better)
-            if ratio == 'Leverage Ratio':
-                trend = ' ↑' if current_value < prev_value else ' ↓'
-            else:
-                trend = ' ↑' if current_value > prev_value else ' ↓'
+            # if ratio == 'Leverage Ratio':
+            #     trend = ' ▲ ' if current_value < prev_value else ' ▼ '
+            # else:
+            #     trend = ' ▲ ' if current_value > prev_value else ' ▼ '
+            # trend = ""
+            # if current_value > prev_value:
+            #     trend = st.markdown("<span style='color:green; font-size:12px'> ▲ </span>")
+            # else:
+            #     trend = st.markdown("<span style='color:red; font-size:12px'> ▼ </span>")
+
+            trend = " ▲ " if current_value > prev_value else ' ▼ ' # ADD
             
             # Format the value based on ratio type
             if ratio == 'EBITDA':
@@ -853,10 +989,12 @@ def add_trend_indicators(df):
         # Format the first year (no trend comparison)
         first_year = sorted_years[0]
         if ratio == 'EBITDA':
-            result_df.at[i, first_year] = f"{row[first_year]:,.2f} ➖"
+            result_df.at[i, first_year] = f"{row[first_year]:,.2f}  ➖"
         else:
-            result_df.at[i, first_year] = f"{row[first_year]:.3f} ➖"
+            result_df.at[i, first_year] = f"{row[first_year]:.3f}  ➖"
     
+    result_df = result_df.style.applymap(style_symbols)
+
     return result_df
 
 def year_wise_financial_statements(all_years_data, years_ratios):
@@ -903,18 +1041,17 @@ def year_wise_financial_statements(all_years_data, years_ratios):
             if count_green == 0 and count_yellow == 0 and count_red == 0:
                 st.warning("**Overview: No financial ratios were calculated for the selected year.**")
 
-            if count_green == 6:
-                st.subheader(":green[**APPROVED: The company is in -EXCELLENT- standing based on the selected financial ratios.**]") 
-                # st.write(":green[**APPROVED]: The company is in -EXCELLENT- standing based on the selected financial ratios.**")
-            elif count_green == 3:
-                st.subheader(":orange[**CONSIDERABLE: The company is in -GOOD- standing based on the selected financial ratios.**]") 
+            if count_green == ACCEPT_RATIO_PARAM: # 6
+                st.subheader(APPROVED_GREEN) 
+                # st.write(":green[**APPROVED]: The company is in -EXCELLENT- standing based onthe selected financial ratios.**")
+            elif count_green == REJECT_RATIO_PARAM: # 3
+                st.subheader(CONSIDERABLE_AMBER) 
                 # st.success("**: The company is in -GOOD- standing based on the selected financial ratios.**")        
-            elif count_green < 3:
-                st.subheader(":red[**DENY : The company is in -POOR- standing based on the selected financial ratios.**]")
+            elif count_green < REJECT_RATIO_PARAM: # 3
+                st.subheader(REJECTED_RED)
                 # st.error(":red[**DENY**]:**The company is in -POOR- standing based on the selected financial ratios.**")
-
             else:
-                st.warning("*Overview: The company is in -POOR- standing based on the selected financial ratios.*")
+                st.error("**Please upload the financial docs again..**")
 
     return selected_ratios
 
@@ -928,52 +1065,58 @@ def visualize_trends(selected_ratios, years_ratios, projected_years, audited_yea
     ratio_keys = selected_ratios.keys()
     ratio_tabs = st.tabs(list(ratio_keys))
 
+    print(f"Trend: {ratio_keys}")
     for i, ratio_name in enumerate(ratio_keys):
         with ratio_tabs[i]:
             chart = create_multi_year_chart(years_ratios, ratio_name)
             st.plotly_chart(chart, use_container_width=True)
 
-    # Only show trend analysis if we have multiple years
-    col1, col2 = st.columns(2)
-    with col1:
-        if len(audited_years) >= 1:
-            # st.write("**Audited Data Trend:**")
-            first_year = audited_years[0]
-            last_year = audited_years[-1]
-            first_value = years_ratios[first_year][ratio_name]["value"]
-            last_value = years_ratios[last_year][ratio_name]["value"]
-            
-            if not pd.isna(first_value) and not pd.isna(last_value) and first_value != 0:
-                change_pct = (last_value - first_value) / abs(first_value) * 100
-                trend = "increasing" if change_pct > 0 else "decreasing"
-                
-                # For leverage ratio, decreasing is good
-                is_positive = (change_pct > 0 and ratio_name != "Leverage Ratio") or (change_pct < 0 and ratio_name == "Leverage Ratio")
-                
-                if is_positive:
-                    st.success(f"The **{ratio_name}** has been **{trend}** by **{abs(change_pct):.3f}%** from **{first_year}** to **{last_year}**, which is positive.")
-                else:
-                    st.error(f"The **{ratio_name}** has been **{trend}** by **{abs(change_pct):.3f}%** from **{first_year}** to **{last_year}**, which needs attention.")
-    with col2:
-        if len(projected_years) >= 1:
-            # st.write("**Projected Data Trend:**")
-            first_year = projected_years[0]
-            last_year = projected_years[-1]
-            first_value = years_ratios[first_year][ratio_name]["value"]
-            last_value = years_ratios[last_year][ratio_name]["value"]
-            
-            if not pd.isna(first_value) and not pd.isna(last_value) and first_value != 0:
-                change_pct = (last_value - first_value) / abs(first_value) * 100
-                trend = "increase" if change_pct > 0 else "decrease"
-                
-                # For leverage ratio, decreasing is good
-                is_positive = (change_pct > 0 and ratio_name != "Leverage Ratio") or (change_pct < 0 and ratio_name == "Leverage Ratio")
-                
-                if is_positive:
-                    st.success(f"The **{ratio_name}** is projected to **{trend}** by **{abs(change_pct):.3f}%** from **{first_year}** to **{last_year}**, which is positive.")
-                else:
-                    st.warning(f"The **{ratio_name}** is projected to **{trend}** by **{abs(change_pct):.3f}%** from **{first_year}** to **{last_year}**, which may need attention.")
+            # Only show trend analysis if we have multiple years
+            col1, col2 = st.columns(2)
+            with col1:
+                if len(audited_years) >= 1:
+                    st.write("**Audited Data Trend:**")
+                    first_year = audited_years[0]
+                    last_year = audited_years[-1]
+                    first_value = years_ratios[first_year][ratio_name]["value"]
+                    last_value = years_ratios[last_year][ratio_name]["value"]
+                    
+                    if not pd.isna(first_value) and not pd.isna(last_value) and first_value != 0:
+                        change_pct = (last_value - first_value) / abs(first_value) * 100
+                        trend = "increasing" if change_pct > 0 else "decreasing"
+                        
+                        # For leverage ratio, decreasing is good
+                        is_positive = (change_pct > 0 and ratio_name != "Leverage Ratio") or (change_pct < 0 and ratio_name == "Leverage Ratio")
+                        
+                        if is_positive:
+                            st.success(f"The **{ratio_name}** has been **{trend}** by **{abs(change_pct):.3f}%** from **{first_year}** to **{last_year}**, which is positive.")
+                        else:
+                            st.error(f"The **{ratio_name}** has been **{trend}** by **{abs(change_pct):.3f}%** from **{first_year}** to **{last_year}**, which needs attention.")
+                    else:
+                        st.info(f"The **{ratio_name}** has no noticable changes from **{first_year}** to **{last_year}**.")
 
+            with col2:
+                if len(projected_years) >= 1:
+                    st.write("**Projected Data Trend:**")
+                    first_year = projected_years[0]
+                    last_year = projected_years[-1]
+                    first_value = years_ratios[first_year][ratio_name]["value"]
+                    last_value = years_ratios[last_year][ratio_name]["value"]
+                    
+                    if not pd.isna(first_value) and not pd.isna(last_value) and first_value != 0:
+                        change_pct = (last_value - first_value) / abs(first_value) * 100
+                        trend = "increase" if change_pct > 0 else "decrease"
+                        
+                        # For leverage ratio, decreasing is good
+                        is_positive = (change_pct > 0 and ratio_name != "Leverage Ratio") or (change_pct < 0 and ratio_name == "Leverage Ratio")
+                        
+                        if is_positive:
+                            st.success(f"The **{ratio_name}** is projected to **{trend}** by **{abs(change_pct):.3f}%** from **{first_year}** to **{last_year}**, which is positive.")
+                        else:
+                            st.warning(f"The **{ratio_name}** is projected to **{trend}** by **{abs(change_pct):.3f}%** from **{first_year}** to **{last_year}**, which may need attention.")
+                    else:
+                        
+                        st.info(f"The **{ratio_name}** has no noticable changes from **{first_year}** to **{last_year}**.")
 
 # Function to get repayment values for each year
 def get_repayment_values(all_years_data_keys):
@@ -1132,20 +1275,20 @@ def complete_stress_test(all_years_data, projected_years):
         stress_net_operating_profit = st.slider("Operating Profit Stress (%)", -50, 50, st.session_state.stress_net_operating_profit, 5)
         st.session_state.stress_net_operating_profit = stress_net_operating_profit
     
-    # Add a run button to trigger stress test calculation
-    run_stress_test = st.button("Run Stress Test")
-    # Only perform stress test if the button is clicked
-    if run_stress_test:
-        # Define stress factors from user inputs
-        stress_factors = {
-            "Total Current Assets": stress_current_assets,
-            "Total Current Liabilities": stress_current_liabilities,
-            "Interest Expense": stress_interest_expense,
-            "Net Operating Profit": stress_net_operating_profit
-        }
-                
-        # Call the stress test display function
-        display_stress_test_results(all_years_data[stress_year], stress_factors)
+    # # Add a run button to trigger stress test calculation
+    # run_stress_test = st.button("Run Stress Test")
+    # # Only perform stress test if the button is clicked
+    # if run_stress_test:
+    #     # Define stress factors from user inputs
+    stress_factors = {
+        "Total Current Assets": stress_current_assets,
+        "Total Current Liabilities": stress_current_liabilities,
+        "Interest Expense": stress_interest_expense,
+        "Net Operating Profit": stress_net_operating_profit
+    }
+            
+    # Call the stress test display function
+    display_stress_test_results(all_years_data[stress_year], stress_factors)
     
 # 4
 def audited_to_projected_trend(audited_years, projected_years, years_ratios):
@@ -1296,6 +1439,96 @@ def convert_to_thousands(all_years_data):
 
     return scaled_data
 
+def edit_financial_data_for_year(year_key, financial_data):
+    """
+    Load and display financial data for a specific year/period for editing.
+    Requires explicit confirmation before saving changes.
+    
+    Args:
+        year_key (str): The period key (e.g., 'audited-2023')
+        financial_data (dict): Dictionary containing all financial data
+        
+    Returns:
+        tuple: (bool, dict) - (Whether changes were confirmed, Updated data for the year)
+    """
+    st.subheader(f"Edit Financial Data for {year_key}")
+    
+    # Create a copy of the data to avoid modifying the original until confirmed
+    if year_key in financial_data:
+        year_data = financial_data[year_key].copy()
+    else:
+        st.error(f"No data found for {year_key}")
+        return False, {}
+    
+    # Display editable fields
+    st.write("Please review and edit the financial data below:")
+    
+    # Create columns for better layout
+    col1, col2 = st.columns(2)
+    
+    # Track if any values were changed
+    original_data = year_data.copy()
+    has_changes = False
+    
+    # Display input fields for all financial metrics in two columns
+    metrics = list(year_data.keys())
+    midpoint = len(metrics) // 2
+    
+    for i, metric in enumerate(metrics):
+        # Determine which column to place this field in
+        column = col1 if i < midpoint else col2
+        
+        with column:
+            # Get current value with proper type handling
+            current_value = year_data.get(metric, 0)
+            if isinstance(current_value, (int, float)):
+                value_type = type(current_value)
+            else:
+                value_type = float
+                
+            # Create input field
+            new_value = st.number_input(
+                metric,
+                value=float(current_value),
+                key=f"edit_{year_key}_{metric}"
+            )
+            
+            # Update the data and track changes
+            year_data[metric] = new_value
+            if abs(float(original_data.get(metric, 0)) - new_value) > 0.001:  # Using a small epsilon for float comparison
+                has_changes = True
+    
+    # Add confirmation buttons
+    st.write("---")
+    if has_changes:
+        st.warning("You have made changes to the financial data. Please confirm to save these changes.")
+    
+    col_cancel, col_confirm = st.columns(2)
+    
+    with col_cancel:
+        if st.button("Cancel Changes", key=f"cancel_{year_key}"):
+            st.info("Changes have been discarded.")
+            return False, original_data
+    
+    with col_confirm:
+        confirm_button = st.button("Confirm Changes", key=f"confirm_{year_key}", 
+                                  type="primary" if has_changes else "secondary")
+        if confirm_button:
+            st.success("Changes have been saved successfully!")
+            return True, year_data
+    
+    # If neither button was pressed, return not confirmed
+    return False, year_data
+
+# Define a styling function
+def style_symbols(val):
+    if "➖" in str(val):
+        return 'color: black'  # Or whatever your default text color is
+    elif "▲" in str(val):
+        return 'color: green'
+    elif "▼" in str(val):
+        return 'color: red'
+    return ''
 
 def main():
     st.title("Decision Making") 
@@ -1333,7 +1566,8 @@ def main():
             # Metadata for the app
             all_years_data_keys = all_years_data.keys()
 
-            # print("All Years Data:", all_years_data)
+            print("All Years Data:", all_years_data)
+            
             # If len(all_years_data)
             if values_in_thousands:
                 all_years_data = convert_to_thousands(all_years_data)
@@ -1343,16 +1577,18 @@ def main():
 
             repayment_values = get_repayment_values(all_years_data_keys)
 
+            print(f"Repayment {repayment_values}")
 
             # Calculate ratios for all years # TODO Repayment
+            # TODO: CHECK EBITDA
             years_ratios = {}
             for year_key, data in all_years_data.items():
                 year_repayment = repayment_values.get(year_key, 0)    # # Calculate DSCR with the specific repayment value
-                years_ratios[year_key] = calculate_ratios_for_data(data, year_repayment)
+                years_ratios[year_key] = calculate_ratios_for_data(data, year_repayment) # TODO: CHECK EBITDA
                 # calculate_ratios_for_data(data, principal_repayment=0):
                 # years_ratios[year_key] = calculate_ratios_for_data(data, principal_repayment if is_projected(year_key) else 0)   # TODO ORIG
-
             # print(f"Years Ratios: {years_ratios}")
+            
 
             # Metadata for the app
             years_ratios_keys = years_ratios.keys()
@@ -1380,7 +1616,7 @@ def main():
 
             # 2. Multi-year trend analysis
             st.subheader("All Actual & Projected - Trend Analysis")
-            with st.expander("Numerical Trend Analysis", expanded=False):
+            with st.expander("Numerical Trend Analysis (Comparable..)", expanded=False):
                 all_trends_dataframe(years_ratios)
 
             with st.expander("Trends Visualization", expanded=False):
@@ -1388,12 +1624,12 @@ def main():
                 
             st.divider()
 
-            # 3. Stress Testing Section
-            st.subheader("Stress Testing Analysis (projected)", help="Analyze how changes in key financial metrics would affect the company's financial ratios.")
-            with st.expander("Select Year for Stress Testing", expanded=False):
-                complete_stress_test(all_years_data, projected_years)
+            # # # 3. Stress Testing Section
+            # st.subheader("Stress Testing Analysis (projected)", help="Analyze how changes in key financial metrics would affect the company's financial ratios.")
+            # with st.expander("Select Year for Stress Testing", expanded=False):
+            #     complete_stress_test(all_years_data, projected_years)
             
-            st.divider()
+            # st.divider()
             
             # 4. Audited to Projected Trend Analysis
             st.subheader("Audited to Projected Trend Analysis")

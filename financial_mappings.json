@@ -10,10 +10,15 @@
       "total_equity": ["Total Equity", "equity", "shareholders equity", "Shareholders' Equity", "total equity", "Net Worth", "Owner's Equity", "Share Capital and Reserves", "Total Share Capital", "Total Shareholders' Fund"],
       "total_liabilities_equity": ["Total Liabilities and Equity", "total liabilities and equity", "total liabilities & equity", "total liabilities and equity", "Total Capital and Liabilities", "Total Liabilities and Shareholders' Equity"],
       "long_term_debt": ["Long-term Debt", "Long term Debt", "long_term_debt", "LTD", "long term debt", "Term Loan", "Bank Term Loan", "Long-term Borrowings"],
-      "interest_expense": ["Interest Expense", "interest expense", "interest_expenses", "Interest Cost", "Finance Cost", "Interest Paid", "Bank Interest"],
-      "net_operating_profit": ["Net Operating Profit", "operating profit", "operating_profit", "EBIT", "net operating profit", "Net Income", "net income", "Net Operating Income", "net operating income", "Profit After Tax", "PAT", "Net Profit", "Profit for the Year"],
-      "depreciation": ["Depreciation", "depreciation", "Depreciation Expense", "Depreciation Charge", "Accumulated Depreciation", "Depreciation Expense"],
-      "amortization": ["Amortization", "amortization", "Amortization Expense", "Amortisation", "Amortisation Expense", "Accumulated Amortization"],
+      "interest_expense": ["Interest Expense", "interest expense", "interest_expenses", "Financial Charges", "Interest Cost", "Finance Cost", "Interest Paid", "Bank Interest"], 
+      "net_operating_profit": [
+        "Net Operating Profit", 
+        "operating profit", "operating_profit", "net operating profit", "Net Income", "net income", 
+        "Net Operating Income", "net operating income", "PAT", "Net Profit", 
+        "Profit for the Year"
+      ],
+      "depreciation": ["Depreciation", "depreciation", "Depreciation Expense", "Depreciation Charge", "Accumulated Depreciation", "Depreciation Expense","Depreciation Expenses"],
+      "amortization": ["Amortization", "amortization", "Amortization Expense", "Amortisation", "Amortisation Expense", "Accumulated Amortization","Amortization Expenses"],
       "gross_profit": ["Gross Profit", "gross profit", "Gross Margin", "Trading Profit", "GP"],
       "total_operating_expenses": ["Total Operating Expenses", "total operating expenses", "Operating Expenses", "OPEX", "Total OPEX"],
       "cash_and_equivalents": ["Cash and Cash Equivalents", "cash", "cash equivalents", "cash & bank balance", "Cash in Hand", "Bank Balance", "Cash at Bank"],
@@ -36,6 +41,9 @@
       "dividend_payable": ["Dividend Payable", "Proposed Dividend", "Dividend Declared", "Dividend Distribution"],
       "advances_from_customers": ["Advances from Customers", "Customer Advances", "Advance Receipts", "Client Advances"],
       "vat_payable": ["VAT Payable", "Value Added Tax", "VAT Liability", "VAT Collected", "Output VAT"],
-      "tds_payable": ["TDS Payable", "Tax Deducted at Source", "Withholding Tax Payable", "WHT Payable"]
+      "tds_payable": ["TDS Payable", "Tax Deducted at Source", "Withholding Tax Payable", "WHT Payable"],
+      "taxation":["Taxation","taxation"],
+      "administration_expense":["Administration Expenses","administration expenses","administration expense"],
+      "profit_after_tax":["Profit After Tax"]
     }
   }
