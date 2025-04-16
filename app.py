@@ -5,22 +5,27 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import copy
 import numpy as np
 import re
+import base64
+from datetime import datetime
+
 
 # Set page configuration
 st.set_page_config(
-    page_title="Multi-Year Financial Ratio Analysis",
+    page_title="Preliminary Decision Making",
     page_icon="💰",
     layout="wide"
 )
 
-ACCEPT_RATIO_PARAM = 6 # 6
+ACCEPT_RATIO_PARAM = 2 # 6
 DESIRABLE_RATIO_PARAM = (ACCEPT_RATIO_PARAM/2) # 3
 REJECT_RATIO_PARAM = DESIRABLE_RATIO_PARAM # 3
-APPROVED_GREEN = ":green[**APPROVED: In principal approval subject to approve from concerned authority**]"
-CONSIDERABLE_AMBER= ":orange[**In principal approval subject to aligning ratios ( highlighted in red) to acceptable level.**]"
-REJECTED_RED = ":red[**REJECTED**]"
+
+APPROVED_GREEN = ":green[**GREEN : In principal approval subject to approve from concerned authority**]"
+CONSIDERABLE_AMBER= ":orange[**AMBER: In principal approval subject to aligning ratios ( highlighted in red) to acceptable level.**]"
+REJECTED_RED = ":red[**RED: REJECTED**]"
 
 # Check Field 'balance.json' , update ratio function, add standards for ratios
 
@@ -86,9 +91,9 @@ STANDARDS = {
         "negative": {"min": float('-inf'), "max": 0, "message": "Negative EBITDA indicates operational losses", "color": "red"}
     },
     "Leverage Ratio": {
-        "strong": {"min": 0, "max": 4, "message": "Good leverage level (≤ 4)", "color": "yellow"},
-        "high": {"min": 4, "max": float('inf'), "message": "High leverage level (> 4)", "color": "green"},
-        "weak": {"min": float('-inf'), "max": 0, "message": "Negative leverage level", "color": "red"}
+        "strong": {"min": 0, "max": 4, "message": "Good leverage level (≤ 4)", "color": "green"},
+        "high": {"min": 4, "max": float('inf'), "message": "High leverage level (> 4)", "color": "red"},
+        # "weak": {"min": float('-inf'), "max": 0, "message": "Negative leverage level", "color": "gray"}
     },
     "Gear Ratio": {
         "strong": {"min": 0, "max": 0.5, "message": "Low gearing (≤ 0.5) – Strong financial structure", "color": "green"},
@@ -209,31 +214,27 @@ def normal_page():
     
     calculations="""
         {
-            "EBITDA":["net operating profit","interest expense","depreciation","amortization"],
-            "Leverage":["total liabilities","total equity"],
-            "ICR":["EBITDA","interest expense"],
-            "DSCR":["EBITDA","interest expense","principal repayment"],
-            "CR":["total current assets","total current liabilities"],
-            "QR":["total current assets","inventory","current liabilities"]
+            "EBITDA-1":["net_operating_profit","interest_expense","depreciation","amortization"],
+            "EBITDA-2":["profit_after_tax", "taxation", "interest_expense", "depreciation", "administration_expense"],
+            "Leverage":["total liabilities (total_current_liabilities + total_non_current_liabilities)","total equity"],
+            "Gear":["long_term_debt (term loan)", "total equity"],
+            "ICR-1":["EBITDA-1","interest_expense"],
+            "ICR-2":["net_operating_profit","interest_expense","depreciation","amortization"],
+            "DSCR-1":["EBITDA-1","interest_expense","principal repayment"],
+            "DSCR-2":["net_operating_profit","depreciation","amortization","interest_expense","principal repayment"],
+            "CR":["total_current_assets","total_current_liabilities"],
+            "QR":["total_current_assets","inventory","total_current_liabilities"]
         }
         """
-    # Statement of Financial Position 
-    # Statement of Profit and Loss Account
-
-    fields="""
+    
+    required_fields="""
         {
-            "BalanceSheet_PL": [
-                "net operating profit",
-                "interest expense",
-                "depreciation",
-                "amortization",
-                "total liabilities",
-                "total equity",
-                "total current liabilities",
-                "total current assets",
-                "inventory"
-            ],
-            "Input":"principal repayment"
+        "BalanceSheet":[
+            "total_current_assets", "total_current_liabilities", "total_non_current_liabilities",
+            "total liabilities", "total equity", "Stocks - Trading | Inventory", "long_term_debt | term loan"
+        ],
+        "PL":["interest_expense", "depreciation | depreciation expenses", "amortization | amortization expenses",
+            "net_operating_profit | net income | profit_after_tax", "administration_expenses", "taxation"]
         }
         """
     # Finance Cost
@@ -245,7 +246,7 @@ def normal_page():
         st.code(sample_structure, language="json")
     with st.expander("Balance Sheet and PL"):
         st.code(calculations,language="json")
-        st.code(fields,language="json")
+        st.code(required_fields,language="json")
     
 # TODO: -ve EBITDA: do not proceed with calculations
 # TODO: Total Assets is not equal to Total Liabilities + Equity: do not proceed with calculations
@@ -275,7 +276,8 @@ def calculate_ebitda(data):
     # Profit After Tax + Taxation + Interest Expense + Depreciation + Administration Expense
     profit_after_tax = abs(find_value(data,FIELD_MAPPINGS["profit_after_tax"]))
     
-    # print(f"EBITDA2: {profit_after_tax} {taxation} {administration_expense}")
+    print(f"EBITDA2--: {operating_profit} -- {taxation} - {interest} - {depreciation} -- {administration_expense}")
+    # return operating_profit + taxation + interest + depreciation + administration_expense
     return profit_after_tax + taxation + interest + depreciation + administration_expense
 
     # return operating_profit + taxation + interest + depreciation + administration_expense
@@ -333,8 +335,6 @@ def calculate_icr(data):
     val = abs(operating_profit)-(abs_interest_expense+abs(amortization)+abs(depreciation))
     return safe_division(val,interest_expense)
 
-    
-
 def calculate_dscr(data, principal_repayment=0):
     """Calculate Debt Service Coverage Ratio (EBITDA / (Interest Expense + Principal Repayment))."""
     # ebitda = calculate_ebitda(data)
@@ -365,7 +365,6 @@ def calculate_qr(data):
     current_liabilities = find_value(data, FIELD_MAPPINGS["total_current_liabilities"])
     return safe_division(current_assets - inventory, current_liabilities)
 
-
 def get_status(ratio_type, value):
     """Determine status of ratio based on standards with range support."""
     if pd.isna(value):
@@ -388,7 +387,7 @@ def display_metric(label, value, status, message, color):
     if pd.isna(value):
         formatted_value = "N/A"
     else:
-        formatted_value = f"{value:.3f}"
+        formatted_value = f"{value:.2f}"
     
     if color == "green":
         st.success(f"**{label}:** {formatted_value} | **Status:** {status.capitalize()} | ***{message}***")
@@ -397,8 +396,8 @@ def display_metric(label, value, status, message, color):
     elif color == "red":
         st.error(f"**{label}:** {formatted_value} | **Status:** {status.capitalize()} | ***{message}***")
     else:
-        st.info(f"**{label}:** {formatted_value} | **Status:** {status.capitalize()} | ***{message}***")
-    
+        st.write(f"**{label}:** {formatted_value} | **Status:** {status.capitalize()} | ***{message}***")
+
 def extract_year_from_key(key):
     """Extract year from a key like 'audited-2023' or 'projected-2025'."""
     match = re.search(r'(\d{4})', key)
@@ -417,7 +416,7 @@ def is_projected(key):
 def calculate_ratios_for_data(data, principal_repayment=0):
     """Calculate all financial ratios for a given data set."""
     # print(f"calculate_ratios_for_data - {principal_repayment}")
-    print(f"Data :{data}")
+    # print(f"Data :{data}")
     ratios = {
         "EBITDA": {"value": calculate_ebitda(data)},
         "Leverage Ratio": {"value": calculate_leverage_ratio(data)},
@@ -771,9 +770,9 @@ def display_stress_test_results(data, stress_factors):
     
         # Format the summary table
         formatted_summary = stress_summary.copy()
-        formatted_summary["Original Value"] = formatted_summary["Original Value"].apply(lambda x: f"{x:.3f}" if not pd.isna(x) else "N/A")
-        formatted_summary["Stressed Value"] = formatted_summary["Stressed Value"].apply(lambda x: f"{x:.3f}" if not pd.isna(x) else "N/A")
-        formatted_summary["Change (%)"] = formatted_summary["Change (%)"].apply(lambda x: f"{x:.3f}%" if not pd.isna(x) else "N/A")
+        formatted_summary["Original Value"] = formatted_summary["Original Value"].apply(lambda x: f"{x:.2f}" if not pd.isna(x) else "N/A")
+        formatted_summary["Stressed Value"] = formatted_summary["Stressed Value"].apply(lambda x: f"{x:.2f}" if not pd.isna(x) else "N/A")
+        formatted_summary["Change (%)"] = formatted_summary["Change (%)"].apply(lambda x: f"{x:.2f}%" if not pd.isna(x) else "N/A")
         
         st.dataframe(formatted_summary, use_container_width=True)
     
@@ -799,12 +798,12 @@ def display_stress_test_results(data, stress_factors):
                 col1, col2 = st.columns(2)
                 with col1:
                     st.write(f"**Original Status:** {original_status.capitalize()}")
-                    st.write(f"**Original Value:** {original_value:.3f}")
+                    st.write(f"**Original Value:** {original_value:.2f}")
                     st.write(original_message)
                 
                 with col2:
                     st.write(f"**Stressed Status:** {stressed_status.capitalize()}")
-                    st.write(f"**Stressed Value:** {stressed_value:.3f}")
+                    st.write(f"**Stressed Value:** {stressed_value:.2f}")
                     st.write(stressed_message)
                     
                 # Calculate and display impact
@@ -813,9 +812,9 @@ def display_stress_test_results(data, stress_factors):
                     impact = "positive" if (change_pct > 0 and ratio_name != "Leverage Ratio") or (change_pct < 0 and ratio_name == "Leverage Ratio") else "negative"
                     
                     if impact == "positive":
-                        st.success(f"**Impact:** The stress test shows a **{abs(change_pct):.3f}% {impact}** change in this ratio.")
+                        st.success(f"**Impact:** The stress test shows a **{abs(change_pct):.2f}% {impact}** change in this ratio.")
                     else:
-                        st.error(f"**Impact:** The stress test shows a **{abs(change_pct):.3f}% {impact}** change in this ratio.")
+                        st.error(f"**Impact:** The stress test shows a **{abs(change_pct):.2f}% {impact}** change in this ratio.")
             else:
                 st.error("Unable to create gauge chart due to invalid values.")
     
@@ -906,7 +905,7 @@ def create_financial_ratios_dataframe(data):
             if idx == 'EBITDA':
                 formatted_pivot.loc[idx, col] = f"{value:,.0f}"
             else:
-                formatted_pivot.loc[idx, col] = f"{value:.3f}"
+                formatted_pivot.loc[idx, col] = f"{value:.2f}"
     
     # Combine formatted values with trend indicators
     result_df = formatted_pivot.copy()
@@ -975,13 +974,14 @@ def add_trend_indicators(df):
             # else:
             #     trend = st.markdown("<span style='color:red; font-size:12px'> ▼ </span>")
 
-            trend = " ▲ " if current_value > prev_value else ' ▼ ' # ADD
+            # trend = " ▲ " if current_value > prev_value else ' ▼ ' # ADD
+            trend=''
             
             # Format the value based on ratio type
             if ratio == 'EBITDA':
                 formatted_value = f"{current_value:,.2f}"
             else:
-                formatted_value = f"{current_value:.3f}"
+                formatted_value = f"{current_value:.2f}"
             
             # Add trend indicator
             result_df.at[i, current_year] = f"{formatted_value} {trend}"
@@ -989,9 +989,9 @@ def add_trend_indicators(df):
         # Format the first year (no trend comparison)
         first_year = sorted_years[0]
         if ratio == 'EBITDA':
-            result_df.at[i, first_year] = f"{row[first_year]:,.2f}  ➖"
+            result_df.at[i, first_year] = f"{row[first_year]:,.2f}" #  ➖"
         else:
-            result_df.at[i, first_year] = f"{row[first_year]:.3f}  ➖"
+            result_df.at[i, first_year] = f"{row[first_year]:.2f}" #  ➖"
     
     result_df = result_df.style.applymap(style_symbols)
 
@@ -999,9 +999,14 @@ def add_trend_indicators(df):
 
 def year_wise_financial_statements(all_years_data, years_ratios):
     """Display financial statements for each year and calculate ratios."""
-    
+    audited_years, projected_years = return_auditednprojected_years(years_ratios)
+   
+    latest_audited = audited_years[-1]
+    first_projected = projected_years[0]
+
     all_years_data_keys = all_years_data.keys()
     selected_ratios = []
+
     with st.expander("Select Year to Analyze", expanded=False):
         selected_year = st.radio(  # selected_year = st.selectbox(
             "**Choose year:**",
@@ -1012,7 +1017,6 @@ def year_wise_financial_statements(all_years_data, years_ratios):
         )
         
         # Display selected year analysis
-        selected_data = all_years_data[selected_year]
         selected_ratios = years_ratios[selected_year]
 
         # print(f"Selected ratios: {selected_ratios}")
@@ -1021,37 +1025,47 @@ def year_wise_financial_statements(all_years_data, years_ratios):
         count_green, count_yellow, count_red = 0,0,0
 
         for i, (ratio_name, ratio_data) in enumerate(selected_ratios.items()):
-            with columns[i % num_columns]:
+            if ratio_name == 'EBITDA':
                 display_metric(
-                    ratio_name,
-                    ratio_data["value"],
-                    ratio_data["status"],
-                    ratio_data["message"],
-                    ratio_data["color"]
+                        ratio_name,
+                        ratio_data["value"],
+                        ratio_data["status"],
+                        ratio_data["message"],
+                        ''
                 )
-                if selected_ratios[ratio_name]["color"] == "green":
-                    count_green += 1
-                if selected_ratios[ratio_name]["color"] == "yellow":
-                    count_yellow += 1
-                if selected_ratios[ratio_name]["color"] == "red":
-                    count_red += 1
-        st.divider()
-                
-        if count_green or count_yellow or count_red:
-            if count_green == 0 and count_yellow == 0 and count_red == 0:
-                st.warning("**Overview: No financial ratios were calculated for the selected year.**")
-
-            if count_green == ACCEPT_RATIO_PARAM: # 6
-                st.subheader(APPROVED_GREEN) 
-                # st.write(":green[**APPROVED]: The company is in -EXCELLENT- standing based onthe selected financial ratios.**")
-            elif count_green == REJECT_RATIO_PARAM: # 3
-                st.subheader(CONSIDERABLE_AMBER) 
-                # st.success("**: The company is in -GOOD- standing based on the selected financial ratios.**")        
-            elif count_green < REJECT_RATIO_PARAM: # 3
-                st.subheader(REJECTED_RED)
-                # st.error(":red[**DENY**]:**The company is in -POOR- standing based on the selected financial ratios.**")
             else:
-                st.error("**Please upload the financial docs again..**")
+                with columns[i % num_columns]:
+                    display_metric(
+                        ratio_name,
+                        ratio_data["value"],
+                        ratio_data["status"],
+                        ratio_data["message"],
+                        ratio_data["color"]
+                    )
+                    if selected_ratios[ratio_name]["color"] == "green":
+                        count_green += 1
+                    if selected_ratios[ratio_name]["color"] == "yellow":
+                        count_yellow += 1
+                    if selected_ratios[ratio_name]["color"] == "red":
+                        count_red += 1
+
+        if count_green or count_yellow or count_red:
+            # st.write(f"Green {count_green} - Red {count_red} - Yellow {count_yellow}")
+            if ACCEPT_RATIO_PARAM == 0:
+                st.warning("**Overview: No financial ratios were calculated for the selected year.**")
+            if selected_year == latest_audited or selected_year == first_projected:
+                st.divider()
+                if count_green == ACCEPT_RATIO_PARAM: # 6
+                    st.subheader(APPROVED_GREEN) 
+                    # st.write(":green[**APPROVED]: The company is in -EXCELLENT- standing based onthe selected financial ratios.**")
+                if count_green == REJECT_RATIO_PARAM: # 3
+                    st.subheader(CONSIDERABLE_AMBER) 
+                    # st.success("**: The company is in -GOOD- standing based on the selected financial ratios.**")        
+                if count_green < REJECT_RATIO_PARAM: # 3
+                    st.subheader(REJECTED_RED)
+                    # st.error(":red[**DENY**]:**The company is in -POOR- standing based on the selected financial ratios.**")
+                # else:
+                #     st.error("**Overview: No financial ratios were calculated for the selected year.**")
 
     return selected_ratios
 
@@ -1061,10 +1075,12 @@ def all_trends_dataframe(years_ratios):
     data_with_trend = add_trend_indicators(financial_df)
     st.dataframe(data_with_trend, use_container_width=True)
 
-def visualize_trends(selected_ratios, years_ratios, projected_years, audited_years):
+def visualize_trends(selected_ratios, years_ratios):
     ratio_keys = selected_ratios.keys()
     ratio_tabs = st.tabs(list(ratio_keys))
-
+    
+    audited_years, projected_years = return_auditednprojected_years(years_ratios
+                                                                    )
     print(f"Trend: {ratio_keys}")
     for i, ratio_name in enumerate(ratio_keys):
         with ratio_tabs[i]:
@@ -1089,9 +1105,9 @@ def visualize_trends(selected_ratios, years_ratios, projected_years, audited_yea
                         is_positive = (change_pct > 0 and ratio_name != "Leverage Ratio") or (change_pct < 0 and ratio_name == "Leverage Ratio")
                         
                         if is_positive:
-                            st.success(f"The **{ratio_name}** has been **{trend}** by **{abs(change_pct):.3f}%** from **{first_year}** to **{last_year}**, which is positive.")
+                            st.success(f"The **{ratio_name}** has been **{trend}** by **{abs(change_pct):.2f}%** from **{first_year}** to **{last_year}**, which is positive.")
                         else:
-                            st.error(f"The **{ratio_name}** has been **{trend}** by **{abs(change_pct):.3f}%** from **{first_year}** to **{last_year}**, which needs attention.")
+                            st.error(f"The **{ratio_name}** has been **{trend}** by **{abs(change_pct):.2f}%** from **{first_year}** to **{last_year}**, which needs attention.")
                     else:
                         st.info(f"The **{ratio_name}** has no noticable changes from **{first_year}** to **{last_year}**.")
 
@@ -1111,9 +1127,9 @@ def visualize_trends(selected_ratios, years_ratios, projected_years, audited_yea
                         is_positive = (change_pct > 0 and ratio_name != "Leverage Ratio") or (change_pct < 0 and ratio_name == "Leverage Ratio")
                         
                         if is_positive:
-                            st.success(f"The **{ratio_name}** is projected to **{trend}** by **{abs(change_pct):.3f}%** from **{first_year}** to **{last_year}**, which is positive.")
+                            st.success(f"The **{ratio_name}** is projected to **{trend}** by **{abs(change_pct):.2f}%** from **{first_year}** to **{last_year}**, which is positive.")
                         else:
-                            st.warning(f"The **{ratio_name}** is projected to **{trend}** by **{abs(change_pct):.3f}%** from **{first_year}** to **{last_year}**, which may need attention.")
+                            st.warning(f"The **{ratio_name}** is projected to **{trend}** by **{abs(change_pct):.2f}%** from **{first_year}** to **{last_year}**, which may need attention.")
                     else:
                         
                         st.info(f"The **{ratio_name}** has no noticable changes from **{first_year}** to **{last_year}**.")
@@ -1291,11 +1307,15 @@ def complete_stress_test(all_years_data, projected_years):
     display_stress_test_results(all_years_data[stress_year], stress_factors)
     
 # 4
-def audited_to_projected_trend(audited_years, projected_years, years_ratios):
+def audited_to_projected_trend(years_ratios):
 
+    audited_years, projected_years = return_auditednprojected_years(years_ratios)
     latest_audited = audited_years[-1] if audited_years else None  # TODO: Handle case with no audited : data audited_years[-1]
-    latest_projected = projected_years[-1] if projected_years else None #TODO: Handle case with no projected : data projected_years[-1]
-
+    
+    # latest_projected = projected_years[-1] if projected_years else None #TODO: Handle case with no projected : data projected_years[-1]
+    latest_projected = projected_years[0] if projected_years else None # NEW
+    
+    print(f"Audited Years: {audited_years} -- {projected_years}")
                 
     if latest_projected:
         
@@ -1326,7 +1346,7 @@ def audited_to_projected_trend(audited_years, projected_years, years_ratios):
         
 
         if latest_audited:
-            st.subheader("Audited to Projected Trend Analysis")
+            # st.subheader("Audited to Projected Trend Analysis")
         
             # Create a DataFrame to show the change from audited to projected
             trend_data = []
@@ -1363,13 +1383,13 @@ def audited_to_projected_trend(audited_years, projected_years, years_ratios):
                 st.plotly_chart(fig, use_container_width=True)
                 
                 # Display the trend table
-                st.write(f"**Detailed Trend Analysis** - from: {latest_audited} to {latest_projected} (% change)")
+                st.write(f"**Detailed Trend Analysis** - from: **{latest_audited}** to **{latest_projected}** (% change)")
                 
                 # Format the DataFrame for display
                 formatted_df = trend_df.copy()
                 for col in [f"Audited: {latest_audited}", f"Projected: {latest_projected}", "Change"]:
-                    formatted_df[col] = formatted_df[col].map(lambda x: f"{x:.3f}")
-                formatted_df["Change %"] = formatted_df["Change %"].map(lambda x: f"{x:.3f}%")
+                    formatted_df[col] = formatted_df[col].map(lambda x: f"{x:.2f}")
+                formatted_df["Change %"] = formatted_df["Change %"].map(lambda x: f"{x:.2f}%")
                 
                 st.dataframe(formatted_df, use_container_width=True)
                 
@@ -1392,8 +1412,8 @@ def audited_to_projected_trend(audited_years, projected_years, years_ratios):
                         best_metric = trend_df.loc[trend_df["Change %"].idxmax()]["Ratio"]
                         worst_metric = trend_df.loc[trend_df["Change %"].idxmin()]["Ratio"]
                         
-                        st.info(f"**Best Performing Metric:** {best_metric}")
-                        st.info(f"**Metric Requiring Most Attention:** {worst_metric}")
+                        st.success(f"**Best Performing Metric:** {best_metric}")
+                        st.error(f"**Metric Requiring Most Attention:** {worst_metric}")
         else:
             st.warning("No audited data available for trend analysis.")
         
@@ -1530,6 +1550,261 @@ def style_symbols(val):
         return 'color: red'
     return ''
 
+# Function to handle customer information
+def collect_customer_information():
+    st.header("Customer Information")
+    customer_info = {}
+    with st.expander("Collect Customer Details", expanded=False):
+        # Create columns for a cleaner layout
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            # 1. Name of the Customer: Input Box
+            customer_name = st.text_input("Name of the Customer")
+            
+           # 4. Consolidated/Unconsolidated: Dropdown
+            consolidation = st.selectbox("Consolidated/Unconsolidated", options=["--","Consolidated", "Unconsolidated"])
+
+            branches = ["--","Branch-001", "Branch-002", "Branch-003","Branch-004"]
+            branch = st.selectbox("Select Branch", options=branches, help="Branch Code")
+        
+        with col2:
+            # 2. Customer Group: Input Box
+            customer_group = st.text_input("Customer Group", help="Group Name?")
+
+            # Amount
+            loan_amount = st.number_input("Loan Amount", min_value=100000, value=1000000, step=100000, help="Total Loan Amount")
+
+            # 6. Auditor Class: Dropdown
+            auditor_classes = ["--","Registered", "Registered Auditor A", "Registered Auditor B", "Registered Auditor C"]
+            auditor_class = st.selectbox("Auditor Class", options=auditor_classes)
+        
+        with col3:
+            # 5. Auditor Name: Input Box
+            auditor_name = st.text_input("Auditor Name")
+
+            # years
+            loan_years = st.number_input("Total Years", min_value=1, value=1, step=1, help="Estimated Years for Loan")
+
+            # 3. Business Type: DropDown
+            business_types = ["--","Trading", "Project Loan", "New Project", "Contractor", "Service", "Manufacturing", "Other"]
+            business_type = st.selectbox("Business Type", options=business_types)
+
+            # Auditor Requirement by ICAN
+        
+        # Return customer information as a dictionary
+        # if len(customer_name) < 6:
+        #     st.error("Please re-enter Customer Name")
+        # if consolidation not in ["Consolidated", "Unconsolidated"]:
+        #     st.error("Please select Consolidation")
+        # if auditor_class not in auditor_classes[1:]:
+        #     st.error("Please select Auditor Class")
+        # if business_type not in business_types[1:]:
+        #     st.error("Please select Business Type")
+
+        customer_info = {
+            "customer_name": customer_name,
+            "customer_group": customer_group,
+            "business_type": business_type,
+            "branch": branch,
+            "consolidation": consolidation,
+            "auditor_name": auditor_name,
+            "auditor_class": auditor_class
+        }
+    
+    return customer_info
+
+# Function to create a printable report
+def create_printable_report(customer_info, financial_data, data_type):
+    # Create HTML for the report
+    html = f"""
+    <html>
+    <head>
+        <title>Financial Report</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 20px; }}
+            h1 {{ color: #2c3e50; }}
+            h2 {{ color: #3498db; margin-top: 20px; }}
+            .customer-info {{ border: 1px solid #ddd; padding: 15px; margin-bottom: 20px; background-color: #f9f9f9; }}
+            .financial-data {{ margin-top: 30px; }}
+            table {{ border-collapse: collapse; width: 100%; margin-top: 10px; }}
+            th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+            th {{ background-color: #f2f2f2; }}
+            .print-header {{ display: flex; justify-content: space-between; }}
+            .print-date {{ text-align: right; font-size: 0.9em; color: #777; }}
+            .category {{ margin-top: 20px; margin-bottom: 10px; font-weight: bold; color: #2c3e50; }}
+            @media print {{
+                button {{ display: none; }}
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="print-header">
+            <h1>Financial Report</h1>
+            <div class="print-date">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}</div>
+        </div>
+        
+        <h2>Customer Information</h2>
+        <div class="customer-info">
+            <table>
+                <tr><th>Field</th><th>Value</th></tr>
+                <tr><td>Customer Name</td><td>{customer_info['customer_name']}</td></tr>
+                <tr><td>Customer Group</td><td>{customer_info['customer_group']}</td></tr>
+                <tr><td>Business Type</td><td>{customer_info['business_type']}</td></tr>
+                <tr><td>Consolidation</td><td>{customer_info['consolidation']}</td></tr>
+                <tr><td>Auditor Name</td><td>{customer_info['auditor_name']}</td></tr>
+                <tr><td>Auditor Class</td><td>{customer_info['auditor_class']}</td></tr>
+            </table>
+        </div>
+        
+        <h2>{data_type.title()} Financial Data</h2>
+        <div class="financial-data">
+    """
+    
+    # Group data into categories for better organization
+    categories = {
+        "Assets": ["Total Current Assets", "Total Non-Current Assets", "Total Assets"],
+        "Liabilities": ["Total Current Liabilities", "Total Non-Current Liabilities", "Total Liabilities", "Long-term Debt"],
+        "Equity": ["Total Equity", "Total Liabilities and Equity"],
+        "Income": ["Operating Income", "Gross Profit", "Total Operating Expenses", "Interest Expense", "Net Operating Profit"],
+        "Other": ["Depreciation", "Amortization", "Stocks Trading", "Inventory"]
+    }
+    
+    # Add each category of financial data
+    for category, fields in categories.items():
+        html += f"<div class='category'>{category}</div>"
+        html += "<table>"
+        html += "<tr><th>Metric</th><th>Value</th></tr>"
+        
+        for field in fields:
+            if field in financial_data:
+                value = financial_data[field]
+                html += f"<tr><td>{field}</td><td>{value:,}</td></tr>"
+        
+        html += "</table>"
+    
+    # Close the HTML
+    html += """
+        </div>
+        
+        <script>
+            // Auto-print when the page loads
+            window.onload = function() {
+                // Add a print button
+                var printButton = document.createElement('button');
+                printButton.innerHTML = 'Print Report';
+                printButton.style.margin = '20px 0';
+                printButton.style.padding = '10px 15px';
+                printButton.style.backgroundColor = '#3498db';
+                printButton.style.color = 'white';
+                printButton.style.border = 'none';
+                printButton.style.borderRadius = '4px';
+                printButton.style.cursor = 'pointer';
+                printButton.onclick = function() { window.print(); };
+                document.body.insertBefore(printButton, document.body.firstChild);
+            };
+        </script>
+    </body>
+    </html>
+    """
+    
+    return html
+
+def load_and_edit_yearly_data(all_years_data):
+    """
+    Loads financial data for a selected year and allows editing with multi-column layout.
+    
+    Parameters:
+    all_years_data (dict): Dictionary containing data for all years with keys like 
+                           'audited-2079', 'projected-2081', etc.
+    
+    Returns:
+    tuple: (selected_year, edited_data)
+    """
+    # Define available years
+    all_years_data_keys = list(all_years_data.keys())
+    
+    # Create a radio button for year selection
+    selected_year = st.radio(
+        "**Choose year:**",
+        options=all_years_data_keys,
+        index=0,
+        help="Select the year for which you want to analyze financial ratios.",
+        horizontal=True
+    )
+    
+    # Get data for the selected year
+    current_data = copy.deepcopy(all_years_data[selected_year])
+    
+    # Create a container for edited data
+    edited_data = {}
+    
+    # Display editable fields
+    st.subheader(f"Edit {selected_year} Data")
+    
+    # Create a form for editing
+    with st.form(key=f"edit_form_{selected_year}"):
+        # Get all field names
+        all_fields = list(current_data.keys())
+        
+        # Calculate number of columns and rows
+        num_columns = 3  # You can adjust this number
+        num_fields = len(all_fields)
+        fields_per_column = (num_fields + num_columns - 1) // num_columns
+        
+        # Create columns
+        cols = st.columns(num_columns)
+        
+        # Distribute fields across columns
+        for i, field in enumerate(all_fields):
+            col_index = i // fields_per_column
+            
+            # Ensure we don't exceed the number of columns
+            if col_index >= num_columns:
+                col_index = num_columns - 1
+                
+            with cols[col_index]:
+                value = current_data[field]
+                field_key = f"{selected_year}_{field}"
+                
+                # Show the field name and an editable number input
+                new_value = st.number_input(
+                    label=field,
+                    value=float(value) if value is not None else 0.0,
+                    key=field_key,
+                    format="%.2f"  # Format to 2 decimal places for cleaner display
+                )
+                
+                # Store the edited value
+                edited_data[field] = new_value
+        
+        # Submit button for the form - centered at the bottom
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col2:
+            submit_button = st.form_submit_button(label="Save Changes")
+    
+    # If form was submitted
+    if submit_button:
+        st.success(f"Changes for {selected_year} saved successfully!")
+        
+        # Here you would typically save the edited data somewhere
+        # all_years_data[selected_year] = edited_data
+    
+    return selected_year, edited_data
+
+def return_auditednprojected_years(years_ratios):
+    years_ratios_keys = years_ratios.keys()
+    audited_years = [y for y in years_ratios_keys if is_audited(y)]
+    projected_years = [y for y in years_ratios_keys if is_projected(y)]
+    audited_years.sort(key=extract_year_from_key)
+    projected_years.sort(key=extract_year_from_key)
+    if not audited_years:
+        st.error("Please verify the docs uploaded to the system")
+    if not audited_years:
+        st.error("Please verify the docs uploaded to the system")
+    return audited_years, projected_years
+
+
 def main():
     st.title("Decision Making") 
     # print(FIELD_MAPPINGS)
@@ -1566,7 +1841,13 @@ def main():
             # Metadata for the app
             all_years_data_keys = all_years_data.keys()
 
-            print("All Years Data:", all_years_data)
+            # print("All Years Data:", all_years_data)
+
+            # Display the customer information form and save the results
+            customer_info = collect_customer_information()
+            print(f"\n Customer Data: {customer_info}")
+
+            st.divider()
             
             # If len(all_years_data)
             if values_in_thousands:
@@ -1576,8 +1857,9 @@ def main():
             # print("All Years Data:", all_years_data)
 
             repayment_values = get_repayment_values(all_years_data_keys)
-
             print(f"Repayment {repayment_values}")
+           
+
 
             # Calculate ratios for all years # TODO Repayment
             # TODO: CHECK EBITDA
@@ -1591,11 +1873,12 @@ def main():
             
 
             # Metadata for the app
-            years_ratios_keys = years_ratios.keys()
-            audited_years = [y for y in years_ratios_keys if is_audited(y)]
-            projected_years = [y for y in years_ratios_keys if is_projected(y)]
-            audited_years.sort(key=extract_year_from_key)
-            projected_years.sort(key=extract_year_from_key)
+            audited_years, projected_years = return_auditednprojected_years(years_ratios)
+            # years_ratios_keys = years_ratios.keys()
+            # audited_years = [y for y in years_ratios_keys if is_audited(y)]
+            # projected_years = [y for y in years_ratios_keys if is_projected(y)]
+            # audited_years.sort(key=extract_year_from_key)
+            # projected_years.sort(key=extract_year_from_key)
 
             # TODO: CHECK balance sheet for all years do some debugging
             # 1: total assest == total liabilities + equity
@@ -1606,12 +1889,15 @@ def main():
             # print(f" -- Years ratio keys: {years_ratios_keys}")
             # print(f" -- Audited years: {audited_years}")
             # print(f" -- Projected years: {projected_years}")
-
+            
+            # # 0. Edit Data from Selected Years.
+            # with st.expander("Edit data", expanded=False):
+            #     load_and_edit_yearly_data(all_years_data)
 
             # 1. Select Financial Statements to Analyze
             st.subheader("Select Financial Statements to Analyze")
             selected_ratios = year_wise_financial_statements(all_years_data, years_ratios)
-            
+            st.button("Generate Printable Report")
             st.divider()
 
             # 2. Multi-year trend analysis
@@ -1619,26 +1905,25 @@ def main():
             with st.expander("Numerical Trend Analysis (Comparable..)", expanded=False):
                 all_trends_dataframe(years_ratios)
 
-            with st.expander("Trends Visualization", expanded=False):
-                visualize_trends(selected_ratios, years_ratios, projected_years, audited_years)
+            # with st.expander("Trends Visualization", expanded=False):
+            #     visualize_trends(selected_ratios, years_ratios)
                 
-            st.divider()
+            # st.divider()
 
-            # # # 3. Stress Testing Section
+            # # 3. Stress Testing Section
             # st.subheader("Stress Testing Analysis (projected)", help="Analyze how changes in key financial metrics would affect the company's financial ratios.")
             # with st.expander("Select Year for Stress Testing", expanded=False):
             #     complete_stress_test(all_years_data, projected_years)
             
-            # st.divider()
+            st.divider()
             
             # 4. Audited to Projected Trend Analysis
             st.subheader("Audited to Projected Trend Analysis")
             with st.expander("Audited (recent) to Projected (final)", expanded=False):
-                audited_to_projected_trend(audited_years, projected_years, years_ratios)
+                audited_to_projected_trend(years_ratios)
                 
-        
         except Exception as e:
-            # st.error(f"An error occurred: {e}") # TODO
+            st.error(f"An error occurred: {e}") # TODO
             st.error("Please check the JSON format and try again.")
             normal_page()
     else:
