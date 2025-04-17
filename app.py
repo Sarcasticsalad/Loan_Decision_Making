@@ -19,7 +19,7 @@ st.set_page_config(
     layout="wide"
 )
 
-ACCEPT_RATIO_PARAM = 2 # 6
+ACCEPT_RATIO_PARAM = 6 # 6
 DESIRABLE_RATIO_PARAM = (ACCEPT_RATIO_PARAM/2) # 3
 REJECT_RATIO_PARAM = DESIRABLE_RATIO_PARAM # 3
 
@@ -252,18 +252,19 @@ def normal_page():
 # TODO: Total Assets is not equal to Total Liabilities + Equity: do not proceed with calculations
 def calculate_ebitda(data):
     """Calculate EBITDA (Earnings Before Interest, Taxes, Depreciation, and Amortization)."""
+    
     # CASE 1:
     operating_profit = abs(find_value(data, FIELD_MAPPINGS["net_operating_profit"])) # shivam" profit/loss (Before)
-    interest = abs(find_value(data, FIELD_MAPPINGS["interest_expense"]))
+    interest_expense = abs(find_value(data, FIELD_MAPPINGS["interest_expense"]))
     depreciation = abs(find_value(data, FIELD_MAPPINGS["depreciation"]))
     amortization = abs(find_value(data, FIELD_MAPPINGS["amortization"]))
     taxation = abs(find_value(data, FIELD_MAPPINGS["taxation"]))
     administration_expense = abs(find_value(data, FIELD_MAPPINGS["administration_expense"]))
 
-    # print(f"EBITDA1: {operating_profit} {interest} {depreciation} {amortization}")
+    # print(f"EBITDA1: {operating_profit} {interest_expense} {depreciation} {amortization}")
     # For financial analysis, we make interest, depreciation, and amortization positive
     # as we're adding them back to the operating profit
-    # return operating_profit + interest + depreciation + amortization
+    # return operating_profit + interest_expense + depreciation + amortization
 
     # CASE 2: Profit after tax: was inside net_operating_profit
     # "net_operating_profit": [
@@ -274,31 +275,32 @@ def calculate_ebitda(data):
     #   ],
     
     # Profit After Tax + Taxation + Interest Expense + Depreciation + Administration Expense
-    profit_after_tax = abs(find_value(data,FIELD_MAPPINGS["profit_after_tax"]))
+    profit_after_tax = find_value(data,FIELD_MAPPINGS["profit_after_tax"])
     
-    print(f"EBITDA2--: {operating_profit} -- {taxation} - {interest} - {depreciation} -- {administration_expense}")
-    # return operating_profit + taxation + interest + depreciation + administration_expense
-    return profit_after_tax + taxation + interest + depreciation + administration_expense
+    print(f"EBITDA2--: {profit_after_tax} -- {taxation} - {interest_expense} - {depreciation} -- {administration_expense}") # TODO: Adm expense
+    # return operating_profit + taxation + interest_expense + depreciation + administration_expense
+    return profit_after_tax + taxation + interest_expense + depreciation + administration_expense
 
-    # return operating_profit + taxation + interest + depreciation + administration_expense
+    # return operating_profit + taxation + interest_expense + depreciation + administration_expense
 
 def calculate_leverage_ratio(data):
     """Calculate Leverage Ratio (Total Liabilities / Total Equity)."""
     total_liabilities = find_value(data, FIELD_MAPPINGS["total_liabilities"])
+    total_current_liabilities = find_value(data, FIELD_MAPPINGS["total_current_liabilities"])
+    total_non_current_liabilities = find_value(data, FIELD_MAPPINGS["total_non_current_liabilities"])
+    total_liabilities_equity = find_value(data, FIELD_MAPPINGS["total_liabilities_equity"])
+    total_equity = find_value(data, FIELD_MAPPINGS["total_equity"])
     
     # If total liabilities is not found or is zero, calculate from current and non-current liabilities
     if total_liabilities == 0:
-        total_current_liabilities = find_value(data, FIELD_MAPPINGS["total_current_liabilities"])
-        if "Total Non-Current Liabilities" in data:
-            total_non_current_liabilities = data["Total Non-Current Liabilities"]
-        else:
-            total_non_current_liabilities = 0
         total_liabilities = total_current_liabilities + total_non_current_liabilities
+    
+    if total_liabilities == 0:
+        total_liabilities = total_liabilities_equity - total_equity
     
     if total_liabilities == 0:
         return st.error("Data is not complete (total_liabilities is missing)")
     
-    total_equity = find_value(data, FIELD_MAPPINGS["total_equity"])
     if total_equity == 0:
         return st.error("Data is not complete (total_equity is missing)")
     
@@ -321,7 +323,7 @@ def calculate_icr(data):
     if not isinstance(ebitda,(int,float)):
         return st.error("Could not proceed with ICR calculation (EBITDA is missing)")
     
-    interest_expense = find_value(data, FIELD_MAPPINGS["interest_expense"])
+    interest_expense = find_value(data, FIELD_MAPPINGS["interest_expense"]) # Finance Costs
     if not isinstance(interest_expense,(int,float)):
         return st.error("Could not proceed with ICR calculation (Interest Expense is missing)")
     abs_interest_expense = abs(interest_expense)
@@ -332,7 +334,9 @@ def calculate_icr(data):
     depreciation = find_value(data, FIELD_MAPPINGS["depreciation"])
     amortization = find_value(data, FIELD_MAPPINGS["amortization"])
     operating_profit = find_value(data, FIELD_MAPPINGS["net_operating_profit"])
+    print(f"ICR: {operating_profit} - {abs_interest_expense} + {amortization} + {depreciation}: {interest_expense}")
     val = abs(operating_profit)-(abs_interest_expense+abs(amortization)+abs(depreciation))
+
     return safe_division(val,interest_expense)
 
 def calculate_dscr(data, principal_repayment=0):
@@ -350,7 +354,7 @@ def calculate_dscr(data, principal_repayment=0):
     # val = operating_profit-(interest_expense+amortization+depreciation)
     val = abs(operating_profit)-(abs_interest_expense+abs(amortization)+abs(depreciation))
 
-    return safe_division(val,(interest_expense+principal_repayment))
+    return safe_division(val,debt_service)
 
 def calculate_cr(data):
     """Calculate Current Ratio (Current Assets / Current Liabilities)."""
@@ -368,7 +372,8 @@ def calculate_qr(data):
 def get_status(ratio_type, value):
     """Determine status of ratio based on standards with range support."""
     if pd.isna(value):
-        return "Invalid", "Unable to calculate ratio (division by zero or missing data)", "gray"
+        return "Invalid", "Unable to calculate ratio", "red"
+        # return "Invalid", "Unable to calculate ratio (division by zero or missing data)", "gray"
     
     # Get standards for this ratio type
     standards = STANDARDS[ratio_type]   # update with balancesheet and ratio formula.
@@ -385,7 +390,7 @@ def display_metric(label, value, status, message, color):
     """Display a metric with appropriate color and message."""
 
     if pd.isna(value):
-        formatted_value = "N/A"
+        formatted_value = "N/A" # 0
     else:
         formatted_value = f"{value:.2f}"
     
@@ -407,11 +412,38 @@ def extract_year_from_key(key):
 
 def is_audited(key):
     """Check if a key represents audited data."""
-    return key.lower().startswith('audit')
+
+    audited = key.lower().startswith('audit')
+    if not audited:
+        audited = key.lower().startswith('previous')
+
+    return audited
 
 def is_projected(key):
     """Check if a key represents projected data."""
-    return key.lower().startswith('project')
+
+    projected = key.lower().startswith('project')
+    if not projected:
+        projected = key.lower().startswith('current')
+
+    return projected
+
+# Function to format a float value as Nepali currency
+def nepali_format(n):
+    n = int(n)
+    s = str(n)
+    if len(s) <= 3:
+        return float(s)
+    else:
+        last3 = s[-3:]
+        rest = s[:-3]
+        parts = []
+        while len(rest) > 2:
+            parts.insert(0, rest[-2:])
+            rest = rest[:-2]
+        if rest:
+            parts.insert(0, rest)
+        return ','.join(parts + [last3])
 
 def calculate_ratios_for_data(data, principal_repayment=0):
     """Calculate all financial ratios for a given data set."""
@@ -929,12 +961,12 @@ def collect_financial_data(years_ratios):
     - years_ratios: Dictionary with year keys and ratio dictionaries as values
     
     Returns:
-    - List of dictionaries with ratio_name, year, and value
+    - List of dictionaries with ratio_n_calculation, year, and value
     """
     all_years_trend = {}
     ratios = list(list(years_ratios.values())[0].keys())
     years = list(years_ratios.keys())
-    all_years_trend['ratio_name'] = ratios
+    all_years_trend['ratio_n_calculation'] = ratios
 
     for year in years:
         values = [years_ratios[year][ratio]["value"] for ratio in ratios]
@@ -948,12 +980,12 @@ def add_trend_indicators(df):
     result_df = df.copy()
     
     # Sort year columns chronologically
-    year_columns = [col for col in df.columns if col != 'ratio_name']
+    year_columns = [col for col in df.columns if col != 'ratio_n_calculation']
     sorted_years = sorted(year_columns)
     
     # Process each ratio row
     for i, row in df.iterrows():
-        ratio = row['ratio_name']
+        ratio = row['ratio_n_calculation']
         
         # Loop through years and compare with previous
         for j in range(1, len(sorted_years)):
@@ -990,8 +1022,10 @@ def add_trend_indicators(df):
         first_year = sorted_years[0]
         if ratio == 'EBITDA':
             result_df.at[i, first_year] = f"{row[first_year]:,.2f}" #  ➖"
+            # result_df.at[i, first_year] = f"{row[first_year]:,.2f}  ➖"
         else:
             result_df.at[i, first_year] = f"{row[first_year]:.2f}" #  ➖"
+            # result_df.at[i, first_year] = f"{row[first_year]:.2f}  ➖"
     
     result_df = result_df.style.applymap(style_symbols)
 
@@ -1004,6 +1038,7 @@ def year_wise_financial_statements(all_years_data, years_ratios):
     latest_audited = audited_years[-1]
     first_projected = projected_years[0]
 
+    print(f"Verify: {latest_audited} {first_projected}")
     all_years_data_keys = all_years_data.keys()
     selected_ratios = []
 
@@ -1019,7 +1054,8 @@ def year_wise_financial_statements(all_years_data, years_ratios):
         # Display selected year analysis
         selected_ratios = years_ratios[selected_year]
 
-        # print(f"Selected ratios: {selected_ratios}")
+        print(f"Selected ratios: {selected_ratios}")
+
         num_columns = 3  # Display and adjust column numbers
         columns = st.columns(num_columns)
         count_green, count_yellow, count_red = 0,0,0
@@ -1044,18 +1080,18 @@ def year_wise_financial_statements(all_years_data, years_ratios):
                     )
                     if selected_ratios[ratio_name]["color"] == "green":
                         count_green += 1
-                    if selected_ratios[ratio_name]["color"] == "yellow":
-                        count_yellow += 1
-                    if selected_ratios[ratio_name]["color"] == "red":
-                        count_red += 1
+                    # if selected_ratios[ratio_name]["color"] == "yellow":
+                    #     count_yellow += 1
+                    # if selected_ratios[ratio_name]["color"] == "red":
+                    #     count_red += 1
 
-        if count_green or count_yellow or count_red:
+        if count_green: # or count_yellow or count_red:
             # st.write(f"Green {count_green} - Red {count_red} - Yellow {count_yellow}")
             if ACCEPT_RATIO_PARAM == 0:
                 st.warning("**Overview: No financial ratios were calculated for the selected year.**")
             if selected_year == latest_audited or selected_year == first_projected:
                 st.divider()
-                if count_green == ACCEPT_RATIO_PARAM: # 6
+                if count_green >= ACCEPT_RATIO_PARAM: # 6
                     st.subheader(APPROVED_GREEN) 
                     # st.write(":green[**APPROVED]: The company is in -EXCELLENT- standing based onthe selected financial ratios.**")
                 if count_green == REJECT_RATIO_PARAM: # 3
@@ -1359,7 +1395,7 @@ def audited_to_projected_trend(years_ratios):
                     change_percent = safe_division(change, abs(audited_value)) * 100
                     
                     trend_data.append({
-                        "Ratio": ratio_name,
+                        "Ratio/Calculation": ratio_name,
                         f"Audited: {latest_audited}": audited_value,
                         f"Projected: {latest_projected}": projected_value,
                         "Change": change,
@@ -1372,12 +1408,12 @@ def audited_to_projected_trend(years_ratios):
                 # Create a visualization for trend
                 fig = px.bar(
                     trend_df,
-                    x="Ratio",
+                    x="Ratio/Calculation",
                     y="Change %",
                     title=f"Change from: '{latest_audited}' to '{latest_projected}' (% change)",
-                    color="Change %",
+                    color="Change",
                     color_continuous_scale=["red", "yellow", "green"],
-                    labels={"Change %": "Change (%)", "Ratio": "Financial Ratio"}
+                    labels={"Change %": "Change %", "Ratio": "Financial Ratio"}
                 )
                 
                 st.plotly_chart(fig, use_container_width=True)
@@ -1389,15 +1425,16 @@ def audited_to_projected_trend(years_ratios):
                 formatted_df = trend_df.copy()
                 for col in [f"Audited: {latest_audited}", f"Projected: {latest_projected}", "Change"]:
                     formatted_df[col] = formatted_df[col].map(lambda x: f"{x:.2f}")
+                    
                 formatted_df["Change %"] = formatted_df["Change %"].map(lambda x: f"{x:.2f}%")
-                
-                st.dataframe(formatted_df, use_container_width=True)
+                # st.dataframe(formatted_df, use_container_width=True)
+
                 
                 # Key insights
-                st.write(f"**Key Insights** - from: {latest_audited} to {latest_projected} (% change)")
+                # st.write(f"**Key Insights** - from: {latest_audited} to {latest_projected} (% change)")
                 
-                improvements = trend_df[trend_df["Change"] > 0]["Ratio"].tolist()
-                declines = trend_df[trend_df["Change"] < 0]["Ratio"].tolist()
+                improvements = trend_df[trend_df["Change"] > 0]["Ratio/Calculation"].tolist()
+                declines = trend_df[trend_df["Change"] < 0]["Ratio/Calculation"].tolist()
 
                 col1, col2 = st.columns(2)
                 with col1:
@@ -1409,8 +1446,8 @@ def audited_to_projected_trend(years_ratios):
                 with col2:
                 # Best and worst performing metrics
                     if not trend_df.empty:
-                        best_metric = trend_df.loc[trend_df["Change %"].idxmax()]["Ratio"]
-                        worst_metric = trend_df.loc[trend_df["Change %"].idxmin()]["Ratio"]
+                        best_metric = trend_df.loc[trend_df["Change %"].idxmax()]["Ratio/Calculation"]
+                        worst_metric = trend_df.loc[trend_df["Change %"].idxmin()]["Ratio/Calculation"]
                         
                         st.success(f"**Best Performing Metric:** {best_metric}")
                         st.error(f"**Metric Requiring Most Attention:** {worst_metric}")
@@ -1552,9 +1589,11 @@ def style_symbols(val):
 
 # Function to handle customer information
 def collect_customer_information():
-    st.header("Customer Information")
+    
     customer_info = {}
     with st.expander("Collect Customer Details", expanded=False):
+        st.header("Customer Information")
+        
         # Create columns for a cleaner layout
         col1, col2, col3 = st.columns(3)
         
@@ -1802,6 +1841,7 @@ def return_auditednprojected_years(years_ratios):
         st.error("Please verify the docs uploaded to the system")
     if not audited_years:
         st.error("Please verify the docs uploaded to the system")
+    print(f"Audites Years: {audited_years} -- Projected Years: {projected_years}")
     return audited_years, projected_years
 
 
@@ -1838,10 +1878,15 @@ def main():
                 st.error("Invalid JSON format. Expected a list or dictionary structure.")
                 return
 
+            # numeric_cols = df.select_dtypes(include=['number']).columns
+            # # Apply the formatting function to all numeric columns
+            # # for col in numeric_cols:
+            # #     df[col] = df[col].apply(format_nepali_currency)
+
             # Metadata for the app
             all_years_data_keys = all_years_data.keys()
 
-            # print("All Years Data:", all_years_data)
+            print("All Years Data:", all_years_data)
 
             # Display the customer information form and save the results
             customer_info = collect_customer_information()
@@ -1858,8 +1903,6 @@ def main():
 
             repayment_values = get_repayment_values(all_years_data_keys)
             print(f"Repayment {repayment_values}")
-           
-
 
             # Calculate ratios for all years # TODO Repayment
             # TODO: CHECK EBITDA
@@ -1919,7 +1962,7 @@ def main():
             
             # 4. Audited to Projected Trend Analysis
             st.subheader("Audited to Projected Trend Analysis")
-            with st.expander("Audited (recent) to Projected (final)", expanded=False):
+            with st.expander("Audited (recent) to Projected (upcoming)", expanded=False):
                 audited_to_projected_trend(years_ratios)
                 
         except Exception as e:
