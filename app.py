@@ -1,6 +1,7 @@
 import streamlit as st
 import json
 import os
+import sys
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -10,6 +11,8 @@ import numpy as np
 import re
 import base64
 from datetime import datetime
+from fpdf import FPDF
+import logging
 
 
 # Set page configuration
@@ -24,8 +27,16 @@ DESIRABLE_RATIO_PARAM = (ACCEPT_RATIO_PARAM/2) # 3
 REJECT_RATIO_PARAM = DESIRABLE_RATIO_PARAM # 3
 
 APPROVED_GREEN = ":green[**GREEN : In principal approval subject to approve from concerned authority**]"
-CONSIDERABLE_AMBER= ":orange[**AMBER: In principal approval subject to aligning ratios ( highlighted in red) to acceptable level.**]"
+CONSIDERABLE_AMBER= ":orange[**AMBER: In principal approval subject to aligning ratios (highlighted in red) to acceptable level.**]"
 REJECTED_RED = ":red[**RED: REJECTED**]"
+
+REJECTED = "REJECTED"
+APPROVED = "GREEN : In principal approval subject to approve from concerned authority"
+CONSIDERABLE = "AMBER: In principal approval subject to aligning ratios to acceptable level."
+
+CUSTOMER_INFORMATION = {}
+AUDITED_DATA = {}
+PROJECTED_DATA = {}
 
 # Check Field 'balance.json' , update ratio function, add standards for ratios
 
@@ -93,13 +104,13 @@ STANDARDS = {
     "Leverage Ratio": {
         "strong": {"min": 0, "max": 4, "message": "Good leverage level (≤ 4)", "color": "green"},
         "high": {"min": 4, "max": float('inf'), "message": "High leverage level (> 4)", "color": "red"},
-        # "weak": {"min": float('-inf'), "max": 0, "message": "Negative leverage level", "color": "gray"}
+        "weak": {"min": float('-inf'), "max": 0, "message": "Negative leverage level", "color": "red"}
     },
     "Gear Ratio": {
         "strong": {"min": 0, "max": 0.5, "message": "Low gearing (≤ 0.5) – Strong financial structure", "color": "green"},
         "moderate": {"min": 0.5, "max": 1.0, "message": "Moderate gearing (0.5 – 1.0) – Acceptable leverage", "color": "yellow"},
         "high": {"min": 1.0, "max": float('inf'), "message": "High gearing (> 1.0) – Risk of over-leverage", "color": "red"},
-        "invalid": {"min": float('-inf'),"max": 0, "message": "Negative gearing ratio – Check input values", "color": "gray"}
+        "invalid": {"min": float('-inf'),"max": 0, "message": "Negative gearing ratio – Check input values", "color": "red"}
     },
     "ICR": {
         "strong": {"min": 1.0, "max": float('inf'), "message": "Sufficient ability to cover interest expenses (> 1)", "color": "yellow"},
@@ -135,6 +146,45 @@ def load_config():
 
 # Initialize field mappings
 FIELD_MAPPINGS = load_config()
+
+def setup_logger(log_dir="logs"):
+    """Set up logger to record app activities and errors"""
+    
+    # Create logs directory if it doesn't exist
+    os.makedirs(log_dir, exist_ok=True)
+    
+    # Create a unique log filename with timestamp
+    current_time = datetime.now().strftime("%Y%m%d_%H")
+    log_filename = os.path.join(log_dir, f"streamlit_app_{current_time}.log")
+    
+    # Configure the root logger
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    
+    # Remove existing handlers to avoid duplicates
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+    
+    # Create file handler for logging to a file
+    file_handler = logging.FileHandler(log_filename)
+    file_handler.setLevel(logging.INFO)
+    
+    # Create console handler for logging to console
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.WARNING)  # Only warnings and errors to console
+    
+    # Create a formatter and add it to the handlers
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(funcName)s -- %(message)s')
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+    
+    # Add the handlers to the logger
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+    
+    return logger
+
+logger = setup_logger()
 
 def find_value(data, field_options):
     """Find value in data using various possible field names, with case-insensitive matching.
@@ -178,7 +228,7 @@ def normal_page():
     # Balance Sheet: Statement of Financial Position
     # Profit and Loss account: Statement of Profit and Loss Account
 
-    st.info("Please upload a JSON file with financial data to begin analysis.")
+    st.error("Please upload a JSON file with financial data to begin analysis OR Proceed with Input Financial Data.")
     st.write("The expected JSON structure should contain multiple years of audited and projected financial data.")
         
     # Show sample data structure
@@ -277,7 +327,7 @@ def calculate_ebitda(data):
     # Profit After Tax + Taxation + Interest Expense + Depreciation + Administration Expense
     profit_after_tax = find_value(data,FIELD_MAPPINGS["profit_after_tax"])
     
-    print(f"EBITDA2--: {profit_after_tax} -- {taxation} - {interest_expense} - {depreciation} -- {administration_expense}") # TODO: Adm expense
+    # print(f"EBITDA2--: {profit_after_tax} -- {taxation} - {interest_expense} - {depreciation} -- {administration_expense}") # TODO: Adm expense
     # return operating_profit + taxation + interest_expense + depreciation + administration_expense
     return profit_after_tax + taxation + interest_expense + depreciation + administration_expense
 
@@ -334,7 +384,7 @@ def calculate_icr(data):
     depreciation = find_value(data, FIELD_MAPPINGS["depreciation"])
     amortization = find_value(data, FIELD_MAPPINGS["amortization"])
     operating_profit = find_value(data, FIELD_MAPPINGS["net_operating_profit"])
-    print(f"ICR: {operating_profit} - {abs_interest_expense} + {amortization} + {depreciation}: {interest_expense}")
+    # print(f"ICR: {operating_profit} - {abs_interest_expense} + {amortization} + {depreciation}: {interest_expense}")
     val = abs(operating_profit)-(abs_interest_expense+abs(amortization)+abs(depreciation))
 
     return safe_division(val,interest_expense)
@@ -411,20 +461,23 @@ def extract_year_from_key(key):
     return 0
 
 def is_audited(key):
-    """Check if a key represents audited data."""
+    """
+    Check if a key represents audited data.
+    AUDIT or Current
+    """
 
     audited = key.lower().startswith('audit')
     if not audited:
-        audited = key.lower().startswith('previous')
+        audited = key.lower().startswith('current')
 
     return audited
 
 def is_projected(key):
-    """Check if a key represents projected data."""
+    """Check if a key represents projected data. Project or Current """
 
     projected = key.lower().startswith('project')
     if not projected:
-        projected = key.lower().startswith('current')
+        projected = key.lower().startswith('previous')
 
     return projected
 
@@ -467,7 +520,7 @@ def calculate_ratios_for_data(data, principal_repayment=0):
     
     # print(f"calculate_ratios_for_data - Ratios: {[(ratio_name,ratios[ratio_name]['value']) for ratio_name in ratios]}")
     # print(f"{'***********'*2}")
-    
+    logger.info(f"{ratios}")
     return ratios
 
 def create_multi_year_chart(years_data, ratio_name):
@@ -1033,14 +1086,18 @@ def add_trend_indicators(df):
 
 def year_wise_financial_statements(all_years_data, years_ratios):
     """Display financial statements for each year and calculate ratios."""
-    audited_years, projected_years = return_auditednprojected_years(years_ratios)
+    audited_years, projected_years = return_auditednprojected_years(years_ratios.keys())
    
     latest_audited = audited_years[-1]
     first_projected = projected_years[0]
 
-    print(f"Verify: {latest_audited} {first_projected}")
+    print(f" >>> Latest Audited & Projected: {latest_audited} {first_projected}")
+
     all_years_data_keys = all_years_data.keys()
+    
     selected_ratios = []
+    year_selected = None
+    decision_message = None
 
     with st.expander("Select Year to Analyze", expanded=False):
         selected_year = st.radio(  # selected_year = st.selectbox(
@@ -1053,8 +1110,7 @@ def year_wise_financial_statements(all_years_data, years_ratios):
         
         # Display selected year analysis
         selected_ratios = years_ratios[selected_year]
-
-        print(f"Selected ratios: {selected_ratios}")
+        year_selected = selected_year
 
         num_columns = 3  # Display and adjust column numbers
         columns = st.columns(num_columns)
@@ -1090,20 +1146,19 @@ def year_wise_financial_statements(all_years_data, years_ratios):
             if ACCEPT_RATIO_PARAM == 0:
                 st.warning("**Overview: No financial ratios were calculated for the selected year.**")
             if selected_year == latest_audited or selected_year == first_projected:
-                st.divider()
                 if count_green >= ACCEPT_RATIO_PARAM: # 6
+                    decision_message = APPROVED_GREEN
                     st.subheader(APPROVED_GREEN) 
-                    # st.write(":green[**APPROVED]: The company is in -EXCELLENT- standing based onthe selected financial ratios.**")
                 if count_green == REJECT_RATIO_PARAM: # 3
+                    decision_message = CONSIDERABLE_AMBER
                     st.subheader(CONSIDERABLE_AMBER) 
-                    # st.success("**: The company is in -GOOD- standing based on the selected financial ratios.**")        
                 if count_green < REJECT_RATIO_PARAM: # 3
+                    decision_message = REJECTED_RED
                     st.subheader(REJECTED_RED)
-                    # st.error(":red[**DENY**]:**The company is in -POOR- standing based on the selected financial ratios.**")
                 # else:
                 #     st.error("**Overview: No financial ratios were calculated for the selected year.**")
 
-    return selected_ratios
+    return selected_ratios, year_selected, decision_message
 
 # 2
 def all_trends_dataframe(years_ratios):
@@ -1115,9 +1170,8 @@ def visualize_trends(selected_ratios, years_ratios):
     ratio_keys = selected_ratios.keys()
     ratio_tabs = st.tabs(list(ratio_keys))
     
-    audited_years, projected_years = return_auditednprojected_years(years_ratios
-                                                                    )
-    print(f"Trend: {ratio_keys}")
+    audited_years, projected_years = return_auditednprojected_years(years_ratios.keys())
+    # print(f"Trend: {ratio_keys}")
     for i, ratio_name in enumerate(ratio_keys):
         with ratio_tabs[i]:
             chart = create_multi_year_chart(years_ratios, ratio_name)
@@ -1199,7 +1253,7 @@ def get_repayment_values(all_years_data_keys):
                     "Principal Repayment (All Years)",
                     min_value=0.0,
                     value=0.0,
-                    step=1000.0,
+                    step=10000.0,
                     help="This value will be applied to all years"
                 )
                 
@@ -1252,7 +1306,7 @@ def get_repayment_values(all_years_data_keys):
                                 step=1000.0,
                                 key=f"repayment_{year}"
                             )
-    
+    logger.info(f"{repayment_values}")
     return repayment_values
 
 # 3
@@ -1345,13 +1399,13 @@ def complete_stress_test(all_years_data, projected_years):
 # 4
 def audited_to_projected_trend(years_ratios):
 
-    audited_years, projected_years = return_auditednprojected_years(years_ratios)
+    audited_years, projected_years = return_auditednprojected_years(years_ratios.keys())
     latest_audited = audited_years[-1] if audited_years else None  # TODO: Handle case with no audited : data audited_years[-1]
     
     # latest_projected = projected_years[-1] if projected_years else None #TODO: Handle case with no projected : data projected_years[-1]
     latest_projected = projected_years[0] if projected_years else None # NEW
     
-    print(f"Audited Years: {audited_years} -- {projected_years}")
+    logger.info(f"{audited_years} -- {projected_years}")
                 
     if latest_projected:
         
@@ -1599,7 +1653,7 @@ def collect_customer_information():
         
         with col1:
             # 1. Name of the Customer: Input Box
-            customer_name = st.text_input("Name of the Customer")
+            customer_name = st.text_input("Name of the Customer", value="Customer", help="Name of the Customer")
             
            # 4. Consolidated/Unconsolidated: Dropdown
             consolidation = st.selectbox("Consolidated/Unconsolidated", options=["--","Consolidated", "Unconsolidated"])
@@ -1609,7 +1663,7 @@ def collect_customer_information():
         
         with col2:
             # 2. Customer Group: Input Box
-            customer_group = st.text_input("Customer Group", help="Group Name?")
+            customer_group = st.text_input("Customer Group", help="Group Name?", value="Group")
 
             # Amount
             loan_amount = st.number_input("Loan Amount", min_value=100000, value=1000000, step=100000, help="Total Loan Amount")
@@ -1620,7 +1674,7 @@ def collect_customer_information():
         
         with col3:
             # 5. Auditor Name: Input Box
-            auditor_name = st.text_input("Auditor Name")
+            auditor_name = st.text_input("Auditor Name", value="Auditor")
 
             # years
             loan_years = st.number_input("Total Years", min_value=1, value=1, step=1, help="Estimated Years for Loan")
@@ -1648,10 +1702,35 @@ def collect_customer_information():
             "branch": branch,
             "consolidation": consolidation,
             "auditor_name": auditor_name,
-            "auditor_class": auditor_class
+            "auditor_class": auditor_class,
+            "loan_amount": loan_amount,
+            "loan_years": loan_years,
         }
     
     return customer_info
+
+def collect_data(create_default_keys):
+    """
+    Collect audited data from the user for the specified keys.
+    """
+    entered_data ={}
+    with st.form(key="Data entry"):
+        num_cols = min(4, len(create_default_keys))
+        cols = st.columns(num_cols)
+
+        for i, key in enumerate(create_default_keys):
+            with cols[i % num_cols]:
+                # Display input field for each key
+                value = st.number_input(key, value = float(0.0), format="%.2f", step=25000.0, help="Enter +ve or -ve value")
+            entered_data[key] = value
+        
+        submitted = st.form_submit_button("Save Data")
+        
+        if submitted:  
+            return entered_data
+        
+        logger.info(f"Data entered: {entered_data}")
+        return entered_data
 
 # Function to create a printable report
 def create_printable_report(customer_info, financial_data, data_type):
@@ -1831,8 +1910,8 @@ def load_and_edit_yearly_data(all_years_data):
     
     return selected_year, edited_data
 
-def return_auditednprojected_years(years_ratios):
-    years_ratios_keys = years_ratios.keys()
+def return_auditednprojected_years(years_ratios_keys):
+    # years_ratios_keys = years_ratios.keys()
     audited_years = [y for y in years_ratios_keys if is_audited(y)]
     projected_years = [y for y in years_ratios_keys if is_projected(y)]
     audited_years.sort(key=extract_year_from_key)
@@ -1841,39 +1920,591 @@ def return_auditednprojected_years(years_ratios):
         st.error("Please verify the docs uploaded to the system")
     if not audited_years:
         st.error("Please verify the docs uploaded to the system")
-    print(f"Audites Years: {audited_years} -- Projected Years: {projected_years}")
+    # print(f"Audites Years: {audited_years} -- Projected Years: {projected_years}")
     return audited_years, projected_years
 
 
-def main():
-    st.title("Decision Making") 
-    # print(FIELD_MAPPINGS)
+def create_default_keys():
+    """Creates a default list of financial data keys, grouped by category"""
+    return {
+        "Assets": [
+            "Total Current Assets", 
+            "Total Non-Current Assets",
+            "Total Assets",
+            "Inventory"
+        ],
+        "Liabilities": [
+            "Total Current Liabilities",
+            "Total Non-Current Liabilities",
+            "Total Liabilities",
+            "Term Loan"
+        ],
+        "Equity": [
+            "Total Equity",
+            "Total Liabilities and Equity"
+        ],
+        "Income": [
+            "Operating Income",
+            "Interest Expense",
+            "Net Operating Profit",
+            "Profit After Tax"
+        ],
+        "Expenses": [
+            "Depreciation",
+            "Amortization",
+            "Taxation",
+            "Administration Expenses"
+        ]
+    }
 
+
+def flatten_keys(grouped_keys):
+    """Flatten grouped keys into a single list"""
+    return [key for group in grouped_keys.values() for key in group]
+
+
+def save_financial_data(data, file_path='financial_data.json'):
+    """Save financial data to JSON file"""
+    with open(file_path, 'w') as file:
+        json.dump(data, file, indent=4)
+
+
+def input_data():
+    with st.expander("Input Financial Data", expanded=st.session_state["input_expanded"]):
+        # Initialize session state for financial data
+        if 'financial_data' not in st.session_state:
+            st.session_state.financial_data = [
+                {"current": {}},
+                {"projected": {}}
+            ]
+        
+        # Initialize session state for grouped keys
+        if 'grouped_keys' not in st.session_state:
+            st.session_state.grouped_keys = create_default_keys()
+        
+        # Tab selection for different operations
+        tab1, tab2, tab3 = st.tabs(["Enter Financial Data for Current/Audited and Projected Year", "View Data", "Export Data"])
+    
+        with tab1:            
+            # # Option to add custom keys
+            # with st.expander("Add Custom Financial Metric"):
+            #     col1, col2 = st.columns([3, 1])
+            #     with col1:
+            #         new_key = st.text_input("New Financial Metric Name:")
+            #     with col2:
+            #         categories = list(st.session_state.grouped_keys.keys()) + ["New Category"]
+            #         selected_category = st.selectbox("Category", categories)
+                
+            #     if st.button("Add Metric"):
+            #         if new_key:
+            #             flat_keys = flatten_keys(st.session_state.grouped_keys)
+            #             if new_key not in flat_keys:
+            #                 if selected_category == "New Category":
+            #                     new_category = st.text_input("Enter new category name:")
+            #                     if new_category and st.button("Create Category"):
+            #                         st.session_state.grouped_keys[new_category] = [new_key]
+            #                 else:
+            #                     if selected_category in st.session_state.grouped_keys:
+            #                         st.session_state.grouped_keys[selected_category].append(new_key)
+            #                     else:
+            #                         st.session_state.grouped_keys[selected_category] = [new_key]
+            #                 st.success(f"Added '{new_key}' to {selected_category}!")
+            #             else:
+            #                 st.error("This metric already exists!")
+            
+            # Get current values for both years
+            current_year_data = st.session_state.financial_data[0]["current"]
+            projected_year_data = st.session_state.financial_data[1]["projected"]
+            
+            # Create a form for input
+            with st.form(key="financial_data_form", border=True):                
+                # Column headers for years
+                st.markdown("""
+                <style>
+                .year-header {
+                    font-weight: bold;
+                    text-align: center;
+                    font-size: 1.2em;
+                    margin-bottom: 10px;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+                
+                # Form values to collect
+                current_form_values = {}
+                projected_form_values = {}
+                
+                # Create a container for all category sections
+                for category, keys in st.session_state.grouped_keys.items():
+                    # st.subheader(category)
+                    
+                    # Create a header row with labels
+                    header_col1, header_col2, header_col3 = st.columns([2, 1, 1])
+                    with header_col1:
+                        st.write("")
+                    with header_col2:
+                        st.markdown("<div class='year-header'>Current/Audited Year</div>", unsafe_allow_html=True)
+                    with header_col3:
+                        st.markdown("<div class='year-header'>Projected Year</div>", unsafe_allow_html=True)
+                    
+                    # Add entries for each key
+                    for key in keys:
+                        col1, col2, col3 = st.columns([2, 1, 1])
+                        
+                        with col1:
+                            st.write(key)
+                        
+                        with col2:
+                            # Get existing value if available
+                            current_existing_value = current_year_data.get(key, 0.0)
+                            current_value = st.number_input(
+                                key,
+                                value=float(current_existing_value),
+                                format="%.2f",
+                                step=50000.00,
+                                help=f"Enter current year {key} value (can be negative)",
+                                key=f"current_{key}"
+                            )
+                            current_form_values[key] = current_value
+                        
+                        with col3:
+                            # Get existing value if available
+                            projected_existing_value = projected_year_data.get(key, 0.0)
+                            projected_value = st.number_input(
+                                key,
+                                value=float(projected_existing_value),
+                                format="%.2f",
+                                step=50000.00,
+                                help=f"Enter projected year {key} value (can be negative)",
+                                key=f"projected_{key}"
+                            )
+                            projected_form_values[key] = projected_value
+                    st.divider()
+                
+                # Submit button
+                if st.form_submit_button("**Save Financial Data for Current (Audited) & Projected Year.**", use_container_width=True, type="primary"):
+                    st.session_state.financial_data[0]["current"] = current_form_values
+                    st.session_state.financial_data[1]["projected"] = projected_form_values
+                    st.success("Financial data for both current(audited) and projected are saved successfully!")
+                    st.session_state["input_expanded"] = False
+        
+        with tab2:
+            st.header("View and Edit Financial Data")
+            
+            # Convert data to DataFrame for display
+            current_data = st.session_state.financial_data[0]["current"]
+            projected_data = st.session_state.financial_data[1]["projected"]
+            
+            # Get all unique keys
+            all_keys = flatten_keys(st.session_state.grouped_keys)
+            
+            # Create a combined DataFrame
+            df_data = {
+                'Metric': all_keys,
+                'Current_Audited Data': [current_data.get(key, 0.0) for key in all_keys],
+                'Projected Data': [projected_data.get(key, 0.0) for key in all_keys],
+            }
+            
+            df = pd.DataFrame(df_data)
+            
+            # Calculate year-over-year change if both years have data
+            if df['Current_Audited Data'].sum() != 0 and df['Projected Data'].sum() != 0:
+                df['Change'] = df.apply(
+                    lambda row: (row['Current_Audited Data'] - row['Projected Data']),
+                    axis=1
+                )
+                
+                df['Change (%)'] = df.apply(
+                    lambda row: (
+                        ((row['Current_Audited Data'] - row['Projected Data']) / abs(row['Projected Data'])) * 100 
+                        if row['Projected Data'] != 0 else float('inf')
+                    ),
+                    axis=1
+                )
+                df['Change (%)'] = df['Change (%)'].map(lambda x: f"{x:.2f}%" if x != float('inf') else "N/A")
+            
+            # Display the DataFrame with highlighting
+            st.dataframe(
+                df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Current_Audited Data": st.column_config.NumberColumn(
+                        "Current_Audited Data",
+                        format="%.2f"
+                    ),
+                    "Projected Data": st.column_config.NumberColumn(
+                        "Projected Data", 
+                        format="%.2f"
+                    ),
+                    "Change": st.column_config.NumberColumn(
+                        "Change",
+                        format="%.2f"
+                    )
+                }
+            )
+            
+            # Display key performance indicators
+            if len(current_data) > 0 and len(projected_data) > 0:
+                st.subheader("Key Financial Indicators")
+                
+                # Show key metrics in 3 columns
+                col1, col2, col3 = st.columns(3)
+                
+                # Calculate changes correctly handling zero values
+                def calc_change(current, projected):
+                    if projected == 0:
+                        return "N/A"
+                    change = ((current - projected) / abs(projected)) * 100
+                    return f"{change:.2f}%"
+                
+                # Total Assets Change
+                current_assets = current_data.get('Total Assets', 0)
+                projected_assets = projected_data.get('Total Assets', 0)
+                assets_change = calc_change(current_assets, projected_assets)
+                
+                col1.metric(
+                    "Total Assets", 
+                    f"{current_assets:,.2f}", 
+                    assets_change if assets_change != "N/A" else None
+                )
+                
+                # Profit After Tax Change
+                current_profit = current_data.get('Profit After Tax', 0)
+                projected_profit = projected_data.get('Profit After Tax', 0)
+                profit_change = calc_change(current_profit, projected_profit)
+                
+                col2.metric(
+                    "Profit After Tax", 
+                    f"{current_profit:,.2f}", 
+                    profit_change if profit_change != "N/A" else None
+                )
+                
+                # Total Liabilities Change
+                current_liabilities = current_data.get('Total Liabilities', 0)
+                projected_liabilities = projected_data.get('Total Liabilities', 0)
+                liabilities_change = calc_change(current_liabilities, projected_liabilities)
+                
+                col3.metric(
+                    "Total Liabilities", 
+                    f"{current_liabilities:,.2f}", 
+                    liabilities_change if liabilities_change != "N/A" else None
+                )
+        
+        with tab3:
+            st.header("Export Financial Data")
+            
+            # Display JSON data
+            st.subheader("Financial Data (JSON)")
+            st.json(st.session_state.financial_data)
+            
+            # Export options
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                filename = st.text_input("Filename", "financial_data.json")
+                if st.button("Save to JSON File"):
+                    try:
+                        save_financial_data(st.session_state.financial_data, filename)
+                        st.success(f"Data saved to {filename}")
+                    except Exception as e:
+                        st.error(f"Error saving data: {e}")
+            
+            with col2:
+                # Export to CSV
+                if st.button("Export to CSV"):
+                    try:
+                        all_keys = flatten_keys(st.session_state.grouped_keys)
+                        df = pd.DataFrame({
+                            'Metric': all_keys,
+                            'Current_Audited Data': [current_data.get(key, 0.0) for key in all_keys],
+                            'Projected Data': [projected_data.get(key, 0.0) for key in all_keys]
+                        })
+                        
+                        csv = df.to_csv(index=False)
+                        st.download_button(
+                            label="Download CSV",
+                            data=csv,
+                            file_name="financial_data.csv",
+                            mime="text/csv"
+                        )
+                    except Exception as e:
+                        st.error(f"Error exporting to CSV: {e}")
+
+            # Reset data button
+            if st.button("Reset All Data", type="primary"):
+                st.session_state.financial_data = [{"current": {}}, {"projected": {}}]
+
+                st.success("All financial data has been reset!")
+                # st.rerun()
+
+
+def get_pdf_download_link(pdf_bytes, filename="financial_report.pdf"):
+    """Generate a download link for the PDF"""
+    b64 = base64.b64encode(pdf_bytes).decode()
+    href = f'<a href="data:application/pdf;base64,{b64}" download="{filename}">Download PDF Report</a>'
+    return href
+
+def print_doc(customer, year_selected, repayment_values, decision, years_ratios):
+    logger.info(f"Customer:{customer}\n Year:{year_selected}\n Repayment:{repayment_values} \nDecision:{decision}\nYear Ratios:{years_ratios}")
+    final_decision = ''
+    if decision is not None:
+        if decision.find("RED") > 0:
+            final_decision = REJECTED
+        elif decision.find("GREEN") > 0:
+            final_decision = APPROVED
+        elif decision.find("AMBER") > 0:
+            final_decision = CONSIDERABLE
+        else:
+            final_decision = REJECTED
+    else:
+        final_decision = "TO Verify Again"
+
+    datetime_now = datetime.now().strftime('%Y-%m-%d')
+
+    pdf = FPDF(orientation='P', unit='mm', format='A4')
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.set_margins(left=15, top=15, right=15)
+    pdf.set_author("Anish C.")
+
+    pdf.set_font("Arial", "B", size=16)
+    pdf.cell(0, 10, "Preliminary Load Decision Making", ln=True, align="C")
+    pdf.ln(2)
+    pdf.set_font("Arial", "", 12)
+    pdf.cell(0, 10, f"Generated on: {datetime_now}", ln=True)
+    pdf.ln(4)
+    pdf.set_font("Arial", "B", 14)
+    pdf.cell(0, 10, "Customer Information", ln=True)
+    pdf.ln(2)
+    pdf.set_font("Arial", "", 12)
+    pdf.cell(0, 10, f"Customer Name: {customer['customer_name']}", ln=True)
+    pdf.cell(0, 10, f"Customer Group: {customer['customer_group']}", ln=True)
+    pdf.cell(0, 10, f"Business Type: {customer['business_type']}", ln=True)
+    pdf.cell(0, 10, f"Consolidation: {customer['consolidation']}", ln=True)
+    pdf.cell(0, 10, f"Auditor Name: {customer['auditor_name']}", ln=True)
+    pdf.cell(0, 10, f"Auditor Class: {customer['auditor_class']}", ln=True)
+    pdf.cell(0, 10, f"Branch: {customer['branch']}", ln=True)
+    pdf.ln(4)
+    pdf.set_font("Arial", "B", 14)
+    pdf.cell(0, 10, "Loan Information", ln=True)
+    pdf.ln(2)
+    pdf.set_font("Arial", "", 12)
+    pdf.cell(0, 10, f"Loan Amount: {customer['loan_amount']}", ln=True)
+    pdf.cell(0, 10, f"Total Tenure: {customer['loan_years']}", ln=True)
+    pdf.cell(0, 10, f"Repayment Amount: {repayment_values[year_selected]:,.2f}", ln=True)
+    pdf.ln(4)
+    pdf.set_font("Arial", "B", 14)
+    pdf.cell(0, 10, f"Financial Year: {year_selected}", ln=True)
+    # pdf.cell(0, 10, f"EBITDA: {years_ratios[year_selected]['EBITDA']['value']}", ln=True)
+    # pdf.cell(0, 10, f"Leverage Ratio: {years_ratios[year_selected]['Leverage Ratio']['value']}", ln=True)
+    # pdf.cell(0, 10, f"DSCR: {years_ratios[year_selected]['DSCR']['value']}", ln=True)
+    # pdf.cell(0, 10, f"ICR: {years_ratios[year_selected]['ICR']['value']}", ln=True)
+    # pdf.cell(0, 10, f"CR: {years_ratios[year_selected]['CR']['value']}", ln=True)
+    # pdf.cell(0, 10, f"QR: {years_ratios[year_selected]['QR']['value']}", ln=True)
+    pdf.ln(4)
+    pdf.set_font("Arial", "B", 14)
+    pdf.cell(0, 10, "Decision:", ln=True)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 10, f"{final_decision}", ln=True)
+    pdf.ln(4)
+    pdf.set_font("Arial", "", 12)
+    pdf.cell(0, 10, "Thank you for using Decision Support service!", ln=True, align="C" ,border=0)
+    
+    file_name = f"report_{customer['branch']}_{customer['customer_name']}_{datetime_now}.pdf"
+    return pdf.output(dest='S').encode('latin-1'), file_name
+
+def colored_section_header(self, text):
+    self.set_fill_color(52, 152, 219)  # Blue background
+    self.set_text_color(255, 255, 255)  # White text
+    self.set_font("Arial", "B", 12)
+    self.cell(0, 10, text, ln=True, align="C", fill=True)
+    self.ln(4)
+    self.set_text_color(0, 0, 0)  # Reset text color
+    # Customer Info Section
+    # pdf.colored_section_header("Customer Information")
+    
+
+def proceeding_steps(all_years_data, customer_data):
+
+    repayment_values = get_repayment_values(all_years_data.keys())
+    # print(f">>>> Repayment {repayment_values}")
+    
+    years_ratios = {}
+    for year_key, data in all_years_data.items():
+        year_repayment = repayment_values.get(year_key, 0)    # # Calculate DSCR with the specific repayment value
+        years_ratios[year_key] = calculate_ratios_for_data(data, year_repayment) # TODO: CHECK EBITDA
+        # calculate_ratios_for_data(data, principal_repayment=0):
+        # years_ratios[year_key] = calculate_ratios_for_data(data, principal_repayment if is_projected(year_key) else 0)   # TODO ORIG
+        
+    # 1. Select Financial Statements to Analyze
+    st.subheader("Select Financial Statements to Analyze")
+    
+    selected_ratios, year_selected, decision = year_wise_financial_statements(all_years_data, years_ratios)
+    # if CUSTOMER_INFORMATION:
+    #     print_doc(year_selected, repayment_values, decision, years_ratios)
+    
+    # Customer Information
+    # Repayment Amount: repayment_values[year_selected]
+    # Year Selected: year_selected
+    # Decision: if decision.str.contains("red") else "green":
+
+    if decision is not None:
+        if st.button("Generate PDF Report"):
+            pdf_bytes, file_name = print_doc(customer_data, year_selected, repayment_values, decision, years_ratios)
+            b64 = base64.b64encode(pdf_bytes).decode()
+            download_button = f'<a href="data:application/pdf;base64,{b64}" download="{file_name}" target="_blank">📥 Download PDF</a>'
+            st.markdown(download_button, unsafe_allow_html=True)
+
+    st.divider()
+
+    # 2. Multi-year trend analysis
+    st.subheader("All Actual & Projected - Trend Analysis")
+    with st.expander("Numerical Trend Analysis (Comparable..)", expanded=False):
+        all_trends_dataframe(years_ratios)
+
+    # with st.expander("Trends Visualization", expanded=False):
+    #     visualize_trends(selected_ratios, years_ratios)
+        
+    # st.divider()
+
+    # # 3. Stress Testing Section
+    # st.subheader("Stress Testing Analysis (projected)", help="Analyze how changes in key financial metrics would affect the company's financial ratios.")
+    # with st.expander("Select Year for Stress Testing", expanded=False):
+    #     complete_stress_test(all_years_data, projected_years)
+    
+    st.divider()
+    
+    # 4. Audited to Projected Trend Analysis
+    st.subheader("Audited to Projected Trend Analysis")
+    with st.expander("Audited (recent) to Projected (upcoming)", expanded=False):
+        audited_to_projected_trend(years_ratios)
+
+def main():
+    st.subheader("Preliminary Loan Decision Making") 
+
+    # initialize session state for financial data
+    if 'financial_data' not in st.session_state:
+        st.session_state.financial_data = [
+            {"current": {}}, 
+            {"projected": {}}
+        ]
+
+    # TODO
+    with st.expander("TO TEST", expanded=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            st.error("Final Printing (Customer Details, Issues)")    # print(FIELD_MAPPINGS)
+            st.info("Editable Data (Editable Data)")
+            st.info("Standard Fianancial Format")
+        with col2:
+            st.error("administration_expense : removing from EBITDA")
+    
     # Sidebar for file upload
     with st.sidebar:
+        if "uploaded_file" not in st.session_state:
+            st.session_state["uploaded_file"] = None
+
+        if "input_expanded" not in st.session_state:
+            st.session_state["input_expanded"] = False
+        
+        # if "proceed_inputdata" not in st.session_state:
+        #     st.session_state["proceed_inputdata"] = False
+        
+        # if "values_inthousands" not in st.session_state:
+        #     st.session_state["values_inthousands"] = False
+
         st.header("Upload Financial Data")
         uploaded_file = st.file_uploader("Upload JSON file", type=["json"])
+        if uploaded_file is not None:
+            st.session_state["uploaded_file"] = uploaded_file
+            st.success("File uploaded successfully!")
+        else:
+            st.session_state["uploaded_file"] = None
+        
+        st.divider()
+
+        # TODO:
+        proceed_input_data = st.checkbox(
+            "**Input Financial Data, proceed**",
+            key="proceed_input_data",
+            help="Check this to proceed with the input of financial data"
+        )
 
         # Add checkbox for scaling values
         values_in_thousands = st.checkbox(
             "**Values in thousands: '000**", 
+            key="values_in_thousands",
             help="Check this if the values in your JSON file are in thousands"
         )
+
+        st.divider()
+
+        if st.button("Reset All Data", type="primary", help="Reset all financial data"):
+            st.session_state.financial_data = [{"current": {}}, {"projected": {}}]
+            # st.session_state["proceed_inputdata"] = False
+            # st.session_state["values_inthousands"] = False
+            st.session_state["input_expanded"] = False
+            st.session_state["uploaded_file"] = None
+            st.rerun()
+    
+    
+    all_years_data = {} # Final Dataset
+    if proceed_input_data and uploaded_file is None:
+        # -------------------- collect the data for the selected years
+        # Financial Data Input Form
+        customer_info = collect_customer_information()
+        if customer_info["customer_name"] is not None:
+            CUSTOMER_INFORMATION = customer_info
+        logger.info(f"Customer Data: {CUSTOMER_INFORMATION}")
         
-    if uploaded_file is not None:
+        # Initialize session state for expander visibility if it doesn't exist
+        if "input_expanded" not in st.session_state:
+            st.session_state["input_expanded"] = True
+
+        input_data()
+
+        inputdata = {}
+        if len(st.session_state.financial_data[0]["current"]) > 0:
+            inputdata["current"] = st.session_state.financial_data[0]["current"]
+        if len(st.session_state.financial_data[1]["projected"]) > 0:
+            inputdata["projected"] = st.session_state.financial_data[1]["projected"]
+        if isinstance(inputdata, dict):
+            all_years_data = inputdata
+        
+        # Metadata for the app
+        if all_years_data:
+            all_years_data_keys = all_years_data.keys()
+            # print(f"\n All years data keys: {all_years_data_keys}")
+
+            if all_years_data_keys:
+                audited_years, projected_years = return_auditednprojected_years(all_years_data_keys)
+                if len(audited_years):
+                    latest_audited = audited_years[-1]
+                if len(projected_years):
+                    first_projected = projected_years[0]
+                    
+            
+            # print(f"\n Audited Years: {audited_years} -- Projected Years: {projected_years}")
+            proceeding_steps(all_years_data, customer_info)
+        # else:
+        #     st.error("**No financial data entered. Please enter the data in the form.**")
+
+    # Process uploaded file
+    elif uploaded_file is not None:
         try:
             # Load the financial data
-            financial_data = json.load(uploaded_file)
+            uploaded_data = json.load(uploaded_file)
             
             # Extract all years of data
-            all_years_data = {}
-            if isinstance(financial_data, list):
+            # all_years_data = {}
+            if isinstance(uploaded_data, list):
                 # Handle list structure
-                for item in financial_data:
+                for item in uploaded_data:
                     for key, data in item.items():
                         all_years_data[key] = data
-            elif isinstance(financial_data, dict):
-                all_years_data = financial_data
+            elif isinstance(uploaded_data, dict):
+                all_years_data = uploaded_data
             else:
                 st.error("Invalid JSON format. Expected a list or dictionary structure.")
                 return
@@ -1882,15 +2513,39 @@ def main():
             # # Apply the formatting function to all numeric columns
             # # for col in numeric_cols:
             # #     df[col] = df[col].apply(format_nepali_currency)
-
+            
             # Metadata for the app
+            logger.info(f"File > {all_years_data}")
             all_years_data_keys = all_years_data.keys()
+            logger.info(f"File > All years data keys: {list(all_years_data.keys())}")
 
-            print("All Years Data:", all_years_data)
-
+            audited_years, projected_years = return_auditednprojected_years(all_years_data_keys)
+            latest_audited = audited_years[-1]
+            first_projected = projected_years[0]
+            
+            logger.info(f"\n File-Audited Years: {audited_years} -- Projected Years: {projected_years}")
+           
             # Display the customer information form and save the results
             customer_info = collect_customer_information()
-            print(f"\n Customer Data: {customer_info}")
+            if customer_info["customer_name"] is not None:
+                CUSTOMER_INFORMATION = customer_info
+                logger.info(f"Customer Data: {CUSTOMER_INFORMATION}")
+
+            if proceed_input_data:
+                st.session_state.financial_data[0]["current"] = all_years_data[latest_audited]
+                st.session_state.financial_data[1]["projected"] = all_years_data[first_projected]
+                # -------------------- collect the data for the selected years
+                # Financial Data Input Form
+                input_data()
+                inputdata = {}
+                if len(st.session_state.financial_data[0]["current"]) > 0:
+                    inputdata["current_audited"] = st.session_state.financial_data[0]["current"]
+                if len(st.session_state.financial_data[1]["projected"]) > 0:
+                    inputdata["projected"] = st.session_state.financial_data[1]["projected"]
+                if isinstance(inputdata, dict):
+                    all_years_data = inputdata
+                logger.info(f"Inputdata: {inputdata}")
+            # print(f" --2 All years data keys: {list(all_years_data.keys())}")
 
             st.divider()
             
@@ -1901,69 +2556,7 @@ def main():
 
             # print("All Years Data:", all_years_data)
 
-            repayment_values = get_repayment_values(all_years_data_keys)
-            print(f"Repayment {repayment_values}")
-
-            # Calculate ratios for all years # TODO Repayment
-            # TODO: CHECK EBITDA
-            years_ratios = {}
-            for year_key, data in all_years_data.items():
-                year_repayment = repayment_values.get(year_key, 0)    # # Calculate DSCR with the specific repayment value
-                years_ratios[year_key] = calculate_ratios_for_data(data, year_repayment) # TODO: CHECK EBITDA
-                # calculate_ratios_for_data(data, principal_repayment=0):
-                # years_ratios[year_key] = calculate_ratios_for_data(data, principal_repayment if is_projected(year_key) else 0)   # TODO ORIG
-            # print(f"Years Ratios: {years_ratios}")
-            
-
-            # Metadata for the app
-            audited_years, projected_years = return_auditednprojected_years(years_ratios)
-            # years_ratios_keys = years_ratios.keys()
-            # audited_years = [y for y in years_ratios_keys if is_audited(y)]
-            # projected_years = [y for y in years_ratios_keys if is_projected(y)]
-            # audited_years.sort(key=extract_year_from_key)
-            # projected_years.sort(key=extract_year_from_key)
-
-            # TODO: CHECK balance sheet for all years do some debugging
-            # 1: total assest == total liabilities + equity
-            # Net Operating profit & Interest expense is available
-            # Inventory is there
-
-            print(f" -- All years data keys: {list(all_years_data_keys)}")
-            # print(f" -- Years ratio keys: {years_ratios_keys}")
-            # print(f" -- Audited years: {audited_years}")
-            # print(f" -- Projected years: {projected_years}")
-            
-            # # 0. Edit Data from Selected Years.
-            # with st.expander("Edit data", expanded=False):
-            #     load_and_edit_yearly_data(all_years_data)
-
-            # 1. Select Financial Statements to Analyze
-            st.subheader("Select Financial Statements to Analyze")
-            selected_ratios = year_wise_financial_statements(all_years_data, years_ratios)
-            st.button("Generate Printable Report")
-            st.divider()
-
-            # 2. Multi-year trend analysis
-            st.subheader("All Actual & Projected - Trend Analysis")
-            with st.expander("Numerical Trend Analysis (Comparable..)", expanded=False):
-                all_trends_dataframe(years_ratios)
-
-            # with st.expander("Trends Visualization", expanded=False):
-            #     visualize_trends(selected_ratios, years_ratios)
-                
-            # st.divider()
-
-            # # 3. Stress Testing Section
-            # st.subheader("Stress Testing Analysis (projected)", help="Analyze how changes in key financial metrics would affect the company's financial ratios.")
-            # with st.expander("Select Year for Stress Testing", expanded=False):
-            #     complete_stress_test(all_years_data, projected_years)
-            
-            st.divider()
-            
-            # 4. Audited to Projected Trend Analysis
-            st.subheader("Audited to Projected Trend Analysis")
-            with st.expander("Audited (recent) to Projected (upcoming)", expanded=False):
-                audited_to_projected_trend(years_ratios)
+            proceeding_steps(all_years_data, customer_info)
                 
         except Exception as e:
             st.error(f"An error occurred: {e}") # TODO
@@ -1974,4 +2567,5 @@ def main():
         normal_page()
 
 if __name__ == "__main__":
+    logger.info("Starting the app...")
     main()
