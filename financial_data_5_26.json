@@ -1,0 +1,42 @@
+[
+    {
+        "current": {
+            "Total Current Assets": 250000.0,
+            "Total Non-Current Assets": 200000.0,
+            "Total Assets": 200000.0,
+            "Inventory": 100000.0,
+            "Total Current Liabilities": 150000.0,
+            "Total Liabilities": 50000.0,
+            "Term Loan": -50000.0,
+            "Total Equity": 0.0,
+            "Operating Income": 250000.0,
+            "Interest Expense": 150000.0,
+            "Net Operating Profit": 150000.0,
+            "Profit After Tax": 150000.0,
+            "Depreciation": 200000.0,
+            "Amortization": 150000.0,
+            "Taxation": 150000.0,
+            "Administration Expenses": -50000.0
+        }
+    },
+    {
+        "projected": {
+            "Total Current Assets": 250000.0,
+            "Total Non-Current Assets": 200000.0,
+            "Total Assets": 250000.0,
+            "Inventory": 150000.0,
+            "Total Current Liabilities": 100000.0,
+            "Total Liabilities": 50000.0,
+            "Term Loan": 50000.0,
+            "Total Equity": 0.0,
+            "Operating Income": 250000.0,
+            "Interest Expense": 150000.0,
+            "Net Operating Profit": 150000.0,
+            "Profit After Tax": -50000.0,
+            "Depreciation": 200000.0,
+            "Amortization": 200000.0,
+            "Taxation": 100000.0,
+            "Administration Expenses": 150000.0
+        }
+    }
+]

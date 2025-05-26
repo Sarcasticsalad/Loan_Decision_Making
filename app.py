@@ -38,64 +38,7 @@ CUSTOMER_INFORMATION = {}
 AUDITED_DATA = {}
 PROJECTED_DATA = {}
 
-# Check Field 'balance.json' , update ratio function, add standards for ratios
-
-# def notes():
-#     operating_profit = find_value(data, FIELD_MAPPINGS["net_operating_profit"])
-#     interest = abs(find_value(data, FIELD_MAPPINGS["interest_expense"]))
-#     depreciation = abs(find_value(data, FIELD_MAPPINGS["depreciation"]))
-#     amortization = abs(find_value(data, FIELD_MAPPINGS["amortization"]))
-#     current_assets = find_value(data, FIELD_MAPPINGS["total_current_assets"])
-#     total_current_liabilities = find_value(data, FIELD_MAPPINGS["total_current_liabilities"])
-#     total_liabilities = find_value(data, FIELD_MAPPINGS["total_liabilities"])
-#     total_equity = find_value(data, FIELD_MAPPINGS["total_equity"])
-#     inventory = find_value(data, FIELD_MAPPINGS["inventory"])
-#     Principal_Repayment
-
-
-# Config for field mappings (handles different naming conventions)
-FIELD_MAPPINGS_old = {
-    "inventory": ["Inventory", "stocks-trading", "Stocks Trading", "stocks trading", "stock_trading", "Stock Trading", "Stocks-Trading"],
-    "total_current_assets": ["Total Current Assets", "current assets", "current_assets", "total current assets"],
-    "total_current_liabilities": ["Total Current Liabilities", "current liabilities", "current_liabilities", "total current liabilities"],
-    "long_term_debt": ["Long-term Debt", "Long term Debt", "long_term_debt", "LTD", "long term debt"],
-    "total_liabilities": ["Total Liabilities", "liabilities", "total liabilities"],
-    "total_equity": ["Total Equity", "equity", "shareholders equity", "Shareholders' Equity", "total equity"],
-    "interest_expense": ["Interest Expense", "interest expense", "interest_expense"],
-    "net_operating_profit": ["Net Operating Profit", "operating profit", "operating_profit", "EBIT", "net operating profit"],
-    "depreciation": ["Depreciation", "depreciation"],
-    "amortization": ["Amortization", "amortization"]
-}
-
 # Benchmark standards for ratios
-STANDARDS_old= {
-    "EBITDA": {
-        "positive": {"threshold": 0, "message": "Positive EBITDA indicates the company is operationally profitable", "color": "green"},
-        "negative": {"threshold": float('-inf'), "message": "Negative EBITDA indicates operational losses", "color": "red"}
-    },
-    "Leverage Ratio": {
-        "good": {"threshold": 4, "message": "Good leverage level (≤ 4)", "color": "green"},
-        "moderate": {"threshold": float('-inf'), "message": "High leverage level (> 4)", "color": "red"}
-    },
-    "ICR": {
-        "strong": {"threshold": 1.0, "message": "Sufficient ability to cover interest expenses (> 1)", "color": "green"},
-        "weak": {"threshold": float('-inf'), "message": "Insufficient ability to cover interest expenses (< 1)", "color": "red"}
-    },
-    "DSCR": {
-        "strong": {"threshold": 1.0, "message": "Sufficient ability to service debt (> 1)", "color": "green"},
-        "high": {"threshold": 1.5, "message": "High ability to service debt (> 1.5)", "color": "yellow"},
-        "weak": {"threshold": float('-inf'), "message": "Insufficient ability to service debt (< 1)", "color": "red"}
-    },
-    "CR": {
-        "strong": {"threshold": 1.0, "message": "Good short-term liquidity (1-1.5)", "color": "green"},
-        "high": {"threshold": 1.5, "message": "High short-term liquidity (> 1.5)", "color": "amber"},
-        "weak": {"threshold": float('-inf'), "message": "Weak short-term liquidity (< 1)", "color": "red"}
-    },
-    "QR": {
-        "strong": {"threshold": 1.0, "message": "Good quick liquidity (> 1)", "color": "green"},
-        "weak": {"threshold": float('-inf'), "message": "Weak quick liquidity (< 1)", "color": "red"}
-    }
-}
 STANDARDS = {
     "EBITDA": {
         "positive": {"min": 0, "max": float('inf'), "message": "Positive EBITDA indicates the company is operationally profitable", "color": "green"},
@@ -187,8 +130,10 @@ def setup_logger(log_dir="logs"):
 logger = setup_logger()
 
 def find_value(data, field_options):
-    """Find value in data using various possible field names, with case-insensitive matching.
-    Prioritizes non-zero values when multiple field matches are found."""
+    """
+    Find value in data using various possible field names, with case-insensitive matching.
+    Prioritizes non-zero values when multiple field matches are found.
+    """
     # Create a case-insensitive and whitespace-normalized version of the data keys
     normalized_data = {}
     for key, value in data.items():
@@ -262,29 +207,30 @@ def normal_page():
         }
         """
     
-    calculations="""
-        {
-            "EBITDA-1":["net_operating_profit","interest_expense","depreciation","amortization"],
-            "EBITDA-2":["profit_after_tax", "taxation", "interest_expense", "depreciation", "administration_expense"],
-            "Leverage":["total liabilities (total_current_liabilities + total_non_current_liabilities)","total equity"],
-            "Gear":["long_term_debt (term loan)", "total equity"],
-            "ICR-1":["EBITDA-1","interest_expense"],
-            "ICR-2":["net_operating_profit","interest_expense","depreciation","amortization"],
-            "DSCR-1":["EBITDA-1","interest_expense","principal repayment"],
-            "DSCR-2":["net_operating_profit","depreciation","amortization","interest_expense","principal repayment"],
-            "CR":["total_current_assets","total_current_liabilities"],
-            "QR":["total_current_assets","inventory","total_current_liabilities"]
-        }
-        """
-    
     required_fields="""
         {
         "BalanceSheet":[
-            "total_current_assets", "total_current_liabilities", "total_non_current_liabilities",
-            "total liabilities", "total equity", "Stocks - Trading | Inventory", "long_term_debt | term loan"
+            "total_current_assets", 
+            "total_current_liabilities", 
+            "total_non_current_liabilities", 
+            "total_non_current_assets",
+            "total liabilities", 
+            "total_assets", 
+            "total equity", 
+            "total_liabilities_equiry", 
+            "Stocks - Trading or Inventory", 
+            "long_term_debt or term loan"
         ],
-        "PL":["interest_expense", "depreciation | depreciation expenses", "amortization | amortization expenses",
-            "net_operating_profit | net income | profit_after_tax", "administration_expenses", "taxation"]
+        "PL":[
+            "operating_income", 
+            "interest_expense", 
+            "depreciation or depreciation expenses", 
+            "amortization or amortization expenses",
+            "net_operating_profit", 
+            "profit_after_tax", 
+            "administration_expenses", 
+            "taxation"
+            ]
         }
         """
     # Finance Cost
@@ -295,85 +241,46 @@ def normal_page():
     with st.expander("Sample Structure"):
         st.code(sample_structure, language="json")
     with st.expander("Balance Sheet and PL"):
-        st.code(calculations,language="json")
-        st.code(required_fields,language="json")
+        # st.code(calculations,language="json")
+        st.code(required_fields,language="json", wrap_lines=True)
     
 # TODO: -ve EBITDA: do not proceed with calculations
 # TODO: Total Assets is not equal to Total Liabilities + Equity: do not proceed with calculations
-def calculate_ebitda(data):
-    """Calculate EBITDA (Earnings Before Interest, Taxes, Depreciation, and Amortization)."""
+def calculate_ebitda(operating_profit, interest_expense, depreciation, amortization, taxation,profit_after_tax, administration_expense):
+    """
+    Calculate EBITDA (Earnings Before Interest, Taxes, Depreciation, and Amortization)
+    """
     
     # CASE 1:
-    operating_profit = abs(find_value(data, FIELD_MAPPINGS["net_operating_profit"])) # shivam" profit/loss (Before)
-    interest_expense = abs(find_value(data, FIELD_MAPPINGS["interest_expense"]))
-    depreciation = abs(find_value(data, FIELD_MAPPINGS["depreciation"]))
-    amortization = abs(find_value(data, FIELD_MAPPINGS["amortization"]))
-    taxation = abs(find_value(data, FIELD_MAPPINGS["taxation"]))
-    administration_expense = abs(find_value(data, FIELD_MAPPINGS["administration_expense"]))
+    operating_profit = abs(operating_profit) # profit/loss (Before)
+    interest_expense = abs(interest_expense)
+    depreciation = abs(depreciation)
+    amortization = abs(amortization)
+    taxation = abs(taxation)
+    administration_expense = abs(administration_expense)
 
-    # print(f"EBITDA1: {operating_profit} {interest_expense} {depreciation} {amortization}")
-    # For financial analysis, we make interest, depreciation, and amortization positive
-    # as we're adding them back to the operating profit
     # return operating_profit + interest_expense + depreciation + amortization
-
-    # CASE 2: Profit after tax: was inside net_operating_profit
-    # "net_operating_profit": [
-    #     "Net Operating Profit", 
-    #     "operating profit", "operating_profit", "net operating profit", "Net Income", "net income", 
-    #     "Net Operating Income", "net operating income", "PAT", "Net Profit", 
-    #     "Profit for the Year"
-    #   ],
-    
-    # Profit After Tax + Taxation + Interest Expense + Depreciation + Administration Expense
-    profit_after_tax = find_value(data,FIELD_MAPPINGS["profit_after_tax"])
-    
-    # print(f"EBITDA2--: {profit_after_tax} -- {taxation} - {interest_expense} - {depreciation} -- {administration_expense}") # TODO: Adm expense
-    # return operating_profit + taxation + interest_expense + depreciation + administration_expense
     return profit_after_tax + taxation + interest_expense + depreciation + administration_expense
 
-    # return operating_profit + taxation + interest_expense + depreciation + administration_expense
-
-def calculate_leverage_ratio(data):
+def calculate_leverage_ratio(total_liabilities, total_equity):
     """Calculate Leverage Ratio (Total Liabilities / Total Equity)."""
-    total_liabilities = find_value(data, FIELD_MAPPINGS["total_liabilities"])
-    total_current_liabilities = find_value(data, FIELD_MAPPINGS["total_current_liabilities"])
-    total_non_current_liabilities = find_value(data, FIELD_MAPPINGS["total_non_current_liabilities"])
-    total_liabilities_equity = find_value(data, FIELD_MAPPINGS["total_liabilities_equity"])
-    total_equity = find_value(data, FIELD_MAPPINGS["total_equity"])
-    
-    # If total liabilities is not found or is zero, calculate from current and non-current liabilities
-    if total_liabilities == 0:
-        total_liabilities = total_current_liabilities + total_non_current_liabilities
-    
-    if total_liabilities == 0:
-        total_liabilities = total_liabilities_equity - total_equity
-    
-    if total_liabilities == 0:
-        return st.error("Data is not complete (total_liabilities is missing)")
-    
-    if total_equity == 0:
-        return st.error("Data is not complete (total_equity is missing)")
-    
     return safe_division(total_liabilities, total_equity)
 
-def calculate_gear_ratio(data):
-    """Calculate Gear Ratio (Term Loan and Finance / Ttoal Equity)."""
-    term_loan = find_value(data, FIELD_MAPPINGS["long_term_debt"]) # Long term Debt
-    total_equity = abs(find_value(data, FIELD_MAPPINGS["total_equity"]))
+def calculate_gear_ratio(term_loan, total_equity):
+    """Calculate Gear Ratio (Term Loan and Finance / Total Equity)."""
+    total_equity = abs(total_equity)
     if not isinstance(total_equity,(int,float)):
         return st.error("Data is not complete (total_equity is missing)")
     
-    # print(f"Term Loan {term_loan} - {total_equity}")
     return safe_division(term_loan, total_equity)
 
 # TODO: ICR
-def calculate_icr(data):
+def calculate_icr(interest_expense, depreciation, amortization, operating_profit):
     """Calculate Interest Coverage Ratio (EBIT / Interest Expense)."""
-    ebitda = calculate_ebitda(data)
-    if not isinstance(ebitda,(int,float)):
-        return st.error("Could not proceed with ICR calculation (EBITDA is missing)")
+    # ebitda = calculate_ebitda(data)
+    # if not isinstance(ebitda,(int,float)):
+    #     return st.error("Could not proceed with ICR calculation (EBITDA is missing)")
     
-    interest_expense = find_value(data, FIELD_MAPPINGS["interest_expense"]) # Finance Costs
     if not isinstance(interest_expense,(int,float)):
         return st.error("Could not proceed with ICR calculation (Interest Expense is missing)")
     abs_interest_expense = abs(interest_expense)
@@ -381,43 +288,35 @@ def calculate_icr(data):
     # return safe_division(ebitda, interest_expense)
 
     # Case: 2
-    depreciation = find_value(data, FIELD_MAPPINGS["depreciation"])
-    amortization = find_value(data, FIELD_MAPPINGS["amortization"])
-    operating_profit = find_value(data, FIELD_MAPPINGS["net_operating_profit"])
-    # print(f"ICR: {operating_profit} - {abs_interest_expense} + {amortization} + {depreciation}: {interest_expense}")
     val = abs(operating_profit)-(abs_interest_expense+abs(amortization)+abs(depreciation))
 
-    return safe_division(val,interest_expense)
+    return safe_division(val, interest_expense)
 
-def calculate_dscr(data, principal_repayment=0):
+def calculate_dscr(interest_expense, depreciation, amortization, operating_profit, principal_repayment=0):
     """Calculate Debt Service Coverage Ratio (EBITDA / (Interest Expense + Principal Repayment))."""
+
+    # Case 1:
     # ebitda = calculate_ebitda(data)
-    interest_expense = find_value(data, FIELD_MAPPINGS["interest_expense"])
     debt_service = interest_expense + principal_repayment
     # return safe_division(ebitda, debt_service)
 
     # Case: 2
     abs_interest_expense = abs(interest_expense)
-    depreciation = abs(find_value(data, FIELD_MAPPINGS["depreciation"]))
-    amortization = abs(find_value(data, FIELD_MAPPINGS["amortization"]))
-    operating_profit = abs(find_value(data, FIELD_MAPPINGS["net_operating_profit"]))
-    # val = operating_profit-(interest_expense+amortization+depreciation)
     val = abs(operating_profit)-(abs_interest_expense+abs(amortization)+abs(depreciation))
 
     return safe_division(val,debt_service)
 
-def calculate_cr(data):
+def calculate_cr(current_assets, current_liabilities):
     """Calculate Current Ratio (Current Assets / Current Liabilities)."""
-    current_assets = find_value(data, FIELD_MAPPINGS["total_current_assets"])
-    current_liabilities = find_value(data, FIELD_MAPPINGS["total_current_liabilities"])
+
     return safe_division(current_assets, current_liabilities)
 
-def calculate_qr(data):
+def calculate_qr(current_assets, current_liabilities, inventory=0):
     """Calculate Quick Ratio ((Current Assets - Inventory) / Current Liabilities)."""
-    current_assets = find_value(data, FIELD_MAPPINGS["total_current_assets"])
-    inventory = find_value(data, FIELD_MAPPINGS["inventory"])
-    current_liabilities = find_value(data, FIELD_MAPPINGS["total_current_liabilities"])
-    return safe_division(current_assets - inventory, current_liabilities)
+    if not isinstance(inventory,(int,float)):
+        inventory = 0
+    
+    return safe_division((current_assets - inventory), current_liabilities)
 
 def get_status(ratio_type, value):
     """Determine status of ratio based on standards with range support."""
@@ -500,16 +399,48 @@ def nepali_format(n):
 
 def calculate_ratios_for_data(data, principal_repayment=0):
     """Calculate all financial ratios for a given data set."""
+
     # print(f"calculate_ratios_for_data - {principal_repayment}")
-    # print(f"Data :{data}")
+    logger.info(f"Data :{data}")
+    # PL
+    operating_profit = find_value(data, FIELD_MAPPINGS["net_operating_profit"])
+    interest_expense = find_value(data, FIELD_MAPPINGS["interest_expense"])
+    depreciation = find_value(data, FIELD_MAPPINGS["depreciation"])
+    amortization = find_value(data, FIELD_MAPPINGS["amortization"])
+    taxation = find_value(data, FIELD_MAPPINGS["taxation"])
+    administration_expense = find_value(data, FIELD_MAPPINGS["administration_expense"])
+    profit_after_tax = find_value(data,FIELD_MAPPINGS["profit_after_tax"])
+
+    #BS
+    total_liabilities = find_value(data, FIELD_MAPPINGS["total_liabilities"])
+    current_liabilities = find_value(data, FIELD_MAPPINGS["total_current_liabilities"])
+    total_equity = find_value(data, FIELD_MAPPINGS["total_equity"])
+    current_assets = find_value(data, FIELD_MAPPINGS["total_current_assets"])
+
+    # total_liabilities_equity = find_value(data, FIELD_MAPPINGS["total_liabilities_equity"]) # Can be removed
+    # non_current_liabilities = find_value(data, FIELD_MAPPINGS["total_non_current_liabilities"]) # Can be removed
+    
+    # if total_liabilities == 0:
+    #     total_liabilities = current_liabilities + non_current_liabilities
+
+    # if total_liabilities == 0:
+    #     total_liabilities = total_liabilities_equity - total_equity
+    
+    # if total_equity == 0:
+    #     total_equity = total_liabilities_equity - total_liabilities
+
+    term_loan = find_value(data, FIELD_MAPPINGS["long_term_debt"]) # Long term Debt
+    inventory = find_value(data, FIELD_MAPPINGS["inventory"])
+
+
     ratios = {
-        "EBITDA": {"value": calculate_ebitda(data)},
-        "Leverage Ratio": {"value": calculate_leverage_ratio(data)},
-        "Gear Ratio": {"value": calculate_gear_ratio(data)},
-        "ICR": {"value": calculate_icr(data)},
-        "DSCR": {"value": calculate_dscr(data, principal_repayment)},
-        "CR": {"value": calculate_cr(data)},
-        "QR": {"value": calculate_qr(data)}
+        "EBITDA": {"value": calculate_ebitda(operating_profit, interest_expense, depreciation, amortization, taxation, profit_after_tax, administration_expense)},
+        "Leverage Ratio": {"value": calculate_leverage_ratio(total_liabilities, total_equity)},
+        "Gear Ratio": {"value": calculate_gear_ratio(term_loan, total_equity)},
+        "ICR": {"value": calculate_icr(interest_expense, depreciation, amortization, operating_profit)},
+        "DSCR": {"value": calculate_dscr(interest_expense, depreciation, amortization, operating_profit, principal_repayment)},
+        "CR": {"value": calculate_cr(current_assets, current_liabilities)},
+        "QR": {"value": calculate_qr(current_assets, current_liabilities, inventory)}
     }
     
     # Determine status for each ratio
@@ -520,7 +451,7 @@ def calculate_ratios_for_data(data, principal_repayment=0):
     
     # print(f"calculate_ratios_for_data - Ratios: {[(ratio_name,ratios[ratio_name]['value']) for ratio_name in ratios]}")
     # print(f"{'***********'*2}")
-    logger.info(f"{ratios}")
+    logger.info(f"Ratios: {ratios}")
     return ratios
 
 def create_multi_year_chart(years_data, ratio_name):
@@ -1090,9 +1021,7 @@ def year_wise_financial_statements(all_years_data, years_ratios):
    
     latest_audited = audited_years[-1]
     first_projected = projected_years[0]
-
-    print(f" >>> Latest Audited & Projected: {latest_audited} {first_projected}")
-
+    
     all_years_data_keys = all_years_data.keys()
     
     selected_ratios = []
@@ -1158,7 +1087,9 @@ def year_wise_financial_statements(all_years_data, years_ratios):
                 # else:
                 #     st.error("**Overview: No financial ratios were calculated for the selected year.**")
 
-    return selected_ratios, year_selected, decision_message
+    # return selected_ratios, year_selected, decision_message
+    return year_selected, decision_message
+
 
 # 2
 def all_trends_dataframe(years_ratios):
@@ -1539,6 +1470,7 @@ def audited_to_projected_trend(years_ratios):
 # Value in '000
 def convert_to_thousands(all_years_data):
     scaled_data = {}
+    
     for year_key, data in all_years_data.items():
         scaled_data[year_key] = {}
         for key, value in data.items():
@@ -1923,7 +1855,6 @@ def return_auditednprojected_years(years_ratios_keys):
     # print(f"Audites Years: {audited_years} -- Projected Years: {projected_years}")
     return audited_years, projected_years
 
-
 def create_default_keys():
     """Creates a default list of financial data keys, grouped by category"""
     return {
@@ -1935,13 +1866,13 @@ def create_default_keys():
         ],
         "Liabilities": [
             "Total Current Liabilities",
-            "Total Non-Current Liabilities",
+            # "Total Non-Current Liabilities",
             "Total Liabilities",
             "Term Loan"
         ],
         "Equity": [
             "Total Equity",
-            "Total Liabilities and Equity"
+            # "Total Liabilities and Equity"
         ],
         "Income": [
             "Operating Income",
@@ -1985,33 +1916,7 @@ def input_data():
         # Tab selection for different operations
         tab1, tab2, tab3 = st.tabs(["Enter Financial Data for Current/Audited and Projected Year", "View Data", "Export Data"])
     
-        with tab1:            
-            # # Option to add custom keys
-            # with st.expander("Add Custom Financial Metric"):
-            #     col1, col2 = st.columns([3, 1])
-            #     with col1:
-            #         new_key = st.text_input("New Financial Metric Name:")
-            #     with col2:
-            #         categories = list(st.session_state.grouped_keys.keys()) + ["New Category"]
-            #         selected_category = st.selectbox("Category", categories)
-                
-            #     if st.button("Add Metric"):
-            #         if new_key:
-            #             flat_keys = flatten_keys(st.session_state.grouped_keys)
-            #             if new_key not in flat_keys:
-            #                 if selected_category == "New Category":
-            #                     new_category = st.text_input("Enter new category name:")
-            #                     if new_category and st.button("Create Category"):
-            #                         st.session_state.grouped_keys[new_category] = [new_key]
-            #                 else:
-            #                     if selected_category in st.session_state.grouped_keys:
-            #                         st.session_state.grouped_keys[selected_category].append(new_key)
-            #                     else:
-            #                         st.session_state.grouped_keys[selected_category] = [new_key]
-            #                 st.success(f"Added '{new_key}' to {selected_category}!")
-            #             else:
-            #                 st.error("This metric already exists!")
-            
+        with tab1:        
             # Get current values for both years
             current_year_data = st.session_state.financial_data[0]["current"]
             projected_year_data = st.session_state.financial_data[1]["projected"]
@@ -2304,7 +2209,7 @@ def print_doc(customer, year_selected, repayment_values, decision, years_ratios)
     # pdf.cell(0, 10, f"QR: {years_ratios[year_selected]['QR']['value']}", ln=True)
     pdf.ln(4)
     pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, "Decision:", ln=True)
+    pdf.cell(0, 10, "Decision:", ln=False)
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 10, f"{final_decision}", ln=True)
     pdf.ln(4)
@@ -2328,33 +2233,22 @@ def colored_section_header(self, text):
 def proceeding_steps(all_years_data, customer_data):
 
     repayment_values = get_repayment_values(all_years_data.keys())
-    # print(f">>>> Repayment {repayment_values}")
     
     years_ratios = {}
     for year_key, data in all_years_data.items():
         year_repayment = repayment_values.get(year_key, 0)    # # Calculate DSCR with the specific repayment value
         years_ratios[year_key] = calculate_ratios_for_data(data, year_repayment) # TODO: CHECK EBITDA
-        # calculate_ratios_for_data(data, principal_repayment=0):
-        # years_ratios[year_key] = calculate_ratios_for_data(data, principal_repayment if is_projected(year_key) else 0)   # TODO ORIG
         
     # 1. Select Financial Statements to Analyze
     st.subheader("Select Financial Statements to Analyze")
     
-    selected_ratios, year_selected, decision = year_wise_financial_statements(all_years_data, years_ratios)
-    # if CUSTOMER_INFORMATION:
-    #     print_doc(year_selected, repayment_values, decision, years_ratios)
-    
-    # Customer Information
-    # Repayment Amount: repayment_values[year_selected]
-    # Year Selected: year_selected
-    # Decision: if decision.str.contains("red") else "green":
+    year_selected, decision = year_wise_financial_statements(all_years_data, years_ratios)
 
-    if decision is not None:
-        if st.button("Generate PDF Report"):
-            pdf_bytes, file_name = print_doc(customer_data, year_selected, repayment_values, decision, years_ratios)
-            b64 = base64.b64encode(pdf_bytes).decode()
-            download_button = f'<a href="data:application/pdf;base64,{b64}" download="{file_name}" target="_blank">📥 Download PDF</a>'
-            st.markdown(download_button, unsafe_allow_html=True)
+    if (decision is not None) and st.button("Generate PDF Report"):
+        pdf_bytes, file_name = print_doc(customer_data, year_selected, repayment_values, decision, years_ratios)
+        b64 = base64.b64encode(pdf_bytes).decode()
+        download_button = f'<a href="data:application/pdf;base64,{b64}" download="{file_name}" target="_blank">📥 Download PDF</a>'
+        st.markdown(download_button, unsafe_allow_html=True)
 
     st.divider()
 
@@ -2365,7 +2259,6 @@ def proceeding_steps(all_years_data, customer_data):
 
     # with st.expander("Trends Visualization", expanded=False):
     #     visualize_trends(selected_ratios, years_ratios)
-        
     # st.divider()
 
     # # 3. Stress Testing Section
@@ -2395,8 +2288,6 @@ def main():
         col1, col2 = st.columns(2)
         with col1:
             st.error("Final Printing (Customer Details, Issues)")    # print(FIELD_MAPPINGS)
-            st.info("Editable Data (Editable Data)")
-            st.info("Standard Fianancial Format")
         with col2:
             st.error("administration_expense : removing from EBITDA")
     
