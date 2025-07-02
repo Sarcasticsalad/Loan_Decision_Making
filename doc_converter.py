@@ -8,6 +8,7 @@ import re
 import heapq
 import numpy as np
 import torch
+import json
 
 def pdf_to_md(source):
     converter = DocumentConverter()
@@ -71,7 +72,7 @@ def pdf_eocr(source):
                 file.write(text)
                 print(f"Text: {text} | Confidence: {confidence}")
 
-pdf_eocr("pdfs/Shivam.pdf")
+# pdf_eocr("pdfs/Shivam.pdf")
 
 def parse_markdown(file_path):
     path = Path(file_path)
@@ -93,14 +94,39 @@ def parse_markdown(file_path):
 
 # parse_markdown("tech_innovator.md")
 
+def check_years(header, year1, year2):
+    # Mapping years to the column index
+    year_index = {}
 
-def extract_data_to_json():
+    for idx, col in enumerate(header):
+        if str(year1) in col:
+            year_index[year1] = idx
+        elif str(year2) in col:
+            year_index[year2] = idx 
+
+    year_index_keys = list(year_index.keys())
+    print(year_index_keys)
+    if len(year_index_keys) == 0:
+        print("Cannot move forward. No years found.")
+    if len(year_index_keys) == 1:
+        print("Cannot move forward. Only one year found")
+    
+    if len(year_index_keys) >=2:
+        if year1 < year2:
+            current_year , projected_year = year1, year2
+        else:
+            current_year, projected_year = year2, year1        
+
+    return current_year, projected_year, year_index    
+
+
+def extract_data_to_dict():
 
     parsed_data = parse_markdown("tech_innovator.md")
 
     # Stores the table data in a list where each row is a list
     table_data = [[cell.strip() for cell in re.findall(r'\|([^|]+)', data)] for data in parsed_data]
-    print(table_data)
+    # print(table_data)
 
     # Assigns the first row of the table data as header
     header = table_data[0]
@@ -115,13 +141,51 @@ def extract_data_to_json():
     # print(year1)
     # print(year2)
 
-    if year1 < year2:
-        result = {"Current": {"year": year1}, "Projected": {"year": year2}}
-    else:
-        result = {"Current": {"year": year2}, "Projected": {"year": year1}}
+    # if year1 < year2:
+    #     result = {"Current": {"year": year1}, "Projected": {"year": year2}}
+    # else:
+    #     result = {"Current": {"year": year2}, "Projected": {"year": year1}}
 
     # print(result)
 
+    current_year, projected_year, year_index = check_years(header, year1, year2)
+    print(f"Current: {current_year}, Projected: {projected_year}")
 
-# extract_data_to_json()
+    # Creating the result dictionary
+    result = {
+        "Current": {
+            "year": current_year,
+            "data": {}
+        },
+
+        "Projected": {
+            "year": projected_year,
+            "data": {}
+        }
+    }
+
+    # Fill data for each year
+
+    # Skips the header
+    for row in table_data[1:]:
+        if len(row) <= max(year_index.values()):
+            continue
+
+        item = row[0]
+        current_value = row[year_index[current_year]]
+        projected_value = row[year_index[projected_year]]
+
+        result["Current"]["data"][item] = current_value
+        result["Projected"]["data"][item] = projected_value
+        
+    return result
+    # print(result)
+
+def extract_dict_to_json():
+    data = extract_data_to_dict()
+    if data:
+        with open("output.json", "w", encoding="utf-8") as file:
+            json.dump(data, file, indent=4)
+
+extract_dict_to_json()    
 
