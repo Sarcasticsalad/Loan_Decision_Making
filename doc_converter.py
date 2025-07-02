@@ -10,6 +10,29 @@ import numpy as np
 import torch
 import json
 
+REQUIRED = [ 
+    "Total Current Assets",
+            "Total Non-Current Assets",
+            "Total Assets",
+            "Inventory",
+            "Total Current Liabilities",
+            "Total Non-Current Liabilities",
+            "Total Liabilities",
+            "Term Loan",
+            "Total Equity",
+            "Total Liabilities and Equity",
+            "Operating Income",
+            "Interest Expense",
+            "Net Operating Profit",
+            "Profit After Tax",
+            "Depreciation",
+            "Amortization",
+            "Taxation",
+            "Administration Expenses"
+            ]
+
+normalized_required = {x.strip().lower() for x in REQUIRED}
+
 def pdf_to_md(source):
     converter = DocumentConverter()
     doc = converter.convert(source).document
@@ -165,6 +188,7 @@ def extract_data_to_dict():
     }
 
     # Fill data for each year
+    # print(table_data)
 
     # Skips the header
     for row in table_data[1:]:
@@ -175,16 +199,33 @@ def extract_data_to_dict():
         current_value = row[year_index[current_year]]
         projected_value = row[year_index[projected_year]]
 
-        result["Current"]["data"][item] = current_value
-        result["Projected"]["data"][item] = projected_value
-        
-    return result
+        normalized_item = item.strip().lower()
+    
+        if normalized_item in normalized_required:
+            try:
+                    # Clean and convert values
+                    if "(" in current_value or "(" in projected_value:
+                        current_value = float(current_value.replace('(', '').replace(')', '').replace('$', '').replace(',', '').strip())
+                        projected_value = float(projected_value.replace('(', '').replace(')', '').replace('$', '').replace(',', '').strip())
+
+                        result["Current"]["data"][item] = round(-current_value, 2)
+                        result["Projected"]["data"][item] = round(-projected_value, 2)
+                    else:
+                        current_value = float(current_value.replace('(', '').replace(')', '').replace('$', '').replace(',', '').strip())
+                        projected_value = float(projected_value.replace('(', '').replace(')', '').replace('$', '').replace(',', '').strip())
+                        result["Current"]["data"][item] = round(current_value, 2)
+                        result["Projected"]["data"][item] = round(projected_value, 2)
+                        
+            except ValueError:
+                    continue        
+                    
+    return result            
     # print(result)
 
 def extract_dict_to_json():
     data = extract_data_to_dict()
     if data:
-        with open("output.json", "w", encoding="utf-8") as file:
+        with open("output_filtered.json", "w", encoding="utf-8") as file:
             json.dump(data, file, indent=4)
 
 extract_dict_to_json()    
