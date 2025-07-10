@@ -2,3 +2,6 @@
 logs
 pdfs
 *.json
+utils/__pycache__/*
+.gitignore
+utils/*/*.pyc

@@ -1,17 +1,20 @@
 from docling.document_converter import DocumentConverter
-# from img2table.ocr import TesseractOCR
-# from img2table.document import PDF, Image
 from pdf2image import convert_from_path
 import easyocr
 from pathlib import Path
 import re
 import heapq
 import numpy as np
-import torch
 import json
+import os
+
+
+TEMP_FOLDER = "temp/"
+MARKDOWN = ".md"
+FINANCIAL_MAPPING = "financial_mappings.json"
 
 REQUIRED = [ 
-    "Total Current Assets",
+            "Total Current Assets",
             "Total Non-Current Assets",
             "Total Assets",
             "Inventory",
@@ -33,43 +36,42 @@ REQUIRED = [
 
 normalized_required = {x.strip().lower() for x in REQUIRED}
 
-def pdf_to_md(source):
+def pdf_to_md(file_object, file_name:str):
+
+    # Ensure TEMP_FOLDER exists
+    os.makedirs(TEMP_FOLDER, exist_ok=True)
+
+    # Build full path using original filename
+    temp_pdf_path = os.path.join(TEMP_FOLDER, f"{file_name}.pdf")
+
+    # Write the in-memory PDF to disk with original name
+    with open(temp_pdf_path, "wb") as file:
+        file.write(file_object.read())
+
+    # Convert to markdown using Docling
     converter = DocumentConverter()
-    doc = converter.convert(source).document
+    doc = converter.convert(temp_pdf_path).document
 
     # Splitting the path to extract only file name
-    source = source.split("/")[-1].split(".")[0]
+    # source = source.split("/")[-1].split(".")[0]
     
+    # Build markdown path
+    md_path = os.path.join(TEMP_FOLDER, f"{file_name}.md")
+
     # Saving the markdown file 
-    with open(f"{source}.md", "w") as file:
+    with open(md_path, "w", encoding="utf-8") as file:
         file.write(doc.export_to_markdown())
-        file.close()
 
+    # === Debug Check ===
+    print(f"[DEBUG] Markdown saved to: {os.path.abspath(md_path)}")
+    print(f"[DEBUG] File exists? {os.path.isfile(md_path)}")
 
-# pdf_to_md("pdfs/Shivam.pdf")
+    # # Delete the Temporary PDF
+    # os.remove(temp_pdf_path)    
 
-# img2table gives no results: {0: []}
-
-# def pdf_ocr(source):
-#     # Instantiation of OCR
-#     ocr = TesseractOCR(n_threads=2, lang='eng')
-
-#     # Instantiation of document, either an image or a PDF
-#     doc = PDF(source)
-
-#     # Table extraction
-#     extracted_tables = doc.extract_tables(ocr=ocr,
-#                                       implicit_rows=True,
-#                                       implicit_columns=True,
-#                                       borderless_tables=True,
-#                                       min_confidence=40)
-
-#     print(extracted_tables)
-
-# pdf_ocr("pdfs/Shivam.pdf")  
+# === On plan using vision Language model ===
 
 def pdf_eocr(source):
-
 # Uncomment for only for GPU based systems
 
     # print("Pytorch version:", torch.__version__)
@@ -97,19 +99,19 @@ def pdf_eocr(source):
 
 # pdf_eocr("pdfs/Shivam.pdf")
 
+# ===============================
+
 def parse_markdown(file_path):
     path = Path(file_path)
     if path.is_file():
-        # print("File exists.")
+        print("File exists.")
 
         # Read Lines
         lines = Path(file_path).read_text(encoding='utf-8').splitlines()
         # print(lines)
         # Select only table lines
-        # table_lines = [line for line in lines if re.match(r'^\s*\|.*\|\s*$', line) and not re.match(r'^\s*\|?[\s\-|]+\|?\s*$', line) and not re.match(r'^\s*\|[^|]*\s*\|\s*\|\s*\|$', line)]
         table_lines = [line for line in lines if re.match(r'^\s*\|.*\|\s*$', line) and not re.match(r'^\s*\|?[\s\-|]+\|?\s*$', line)]
         # print(table_lines)
-        
         return table_lines
 
     else:
@@ -128,7 +130,7 @@ def check_years(header, year1, year2):
             year_index[year2] = idx 
 
     year_index_keys = list(year_index.keys())
-    print(year_index_keys)
+    # print(year_index_keys)
     if len(year_index_keys) == 0:
         print("Cannot move forward. No years found.")
     if len(year_index_keys) == 1:
@@ -143,9 +145,24 @@ def check_years(header, year1, year2):
     return current_year, projected_year, year_index    
 
 
-def extract_data_to_dict():
+def load_field_mappings():
+    with open(f"{FINANCIAL_MAPPING}", "r") as file:
+        mapping_data = json.load(file)
 
-    parsed_data = parse_markdown("tech_innovator.md")
+    return mapping_data["field_mappings"]
+
+def create_alias_lookup(field_mappings):
+    alias_lookup = {}
+    for standard_field, aliases in field_mappings.items():
+        for alias in aliases:
+            alias_lookup[alias.strip().lower()] = standard_field
+
+    return alias_lookup
+
+
+def extract_data_to_dict(file_name):
+    
+    parsed_data = parse_markdown(f"{TEMP_FOLDER}{file_name}{MARKDOWN}")
 
     # Stores the table data in a list where each row is a list
     table_data = [[cell.strip() for cell in re.findall(r'\|([^|]+)', data)] for data in parsed_data]
@@ -164,26 +181,22 @@ def extract_data_to_dict():
     # print(year1)
     # print(year2)
 
-    # if year1 < year2:
-    #     result = {"Current": {"year": year1}, "Projected": {"year": year2}}
-    # else:
-    #     result = {"Current": {"year": year2}, "Projected": {"year": year1}}
-
-    # print(result)
+    FIELD_MAPPINGS = load_field_mappings()
+    ALIAS_LOOKUP = create_alias_lookup(FIELD_MAPPINGS)
 
     current_year, projected_year, year_index = check_years(header, year1, year2)
     print(f"Current: {current_year}, Projected: {projected_year}")
 
     # Creating the result dictionary
     result = {
-        "Current": {
-            "year": current_year,
-            "data": {}
+        f"current_{current_year}": {
+            #"year": current_year,
+            # "data": {}
         },
 
-        "Projected": {
-            "year": projected_year,
-            "data": {}
+        f"projected_{projected_year}": {
+            # "year": projected_year,
+            # "data": {}
         }
     }
 
@@ -195,38 +208,57 @@ def extract_data_to_dict():
         if len(row) <= max(year_index.values()):
             continue
 
-        item = row[0]
+        raw_label = row[0].strip().lower()
+
+        # First try exact match
+        standard_field = ALIAS_LOOKUP.get(raw_label)
+
+        # If no exact match, do partial match
+        if not standard_field:
+            for alias, field in ALIAS_LOOKUP.items():
+                if alias in raw_label:
+                    standard_field = field
+                    break
+        
+        if not standard_field:
+            print(f"Unmatched label: '{raw_label}'")
+            continue
+
+        if standard_field.strip().lower() not in normalized_required:
+            print(f"Skipping non-required field: '{standard_field}'")
+            continue
+
         current_value = row[year_index[current_year]]
         projected_value = row[year_index[projected_year]]
 
-        normalized_item = item.strip().lower()
-    
-        if normalized_item in normalized_required:
-            try:
-                    # Clean and convert values
-                    if "(" in current_value or "(" in projected_value:
-                        current_value = float(current_value.replace('(', '').replace(')', '').replace('$', '').replace(',', '').strip())
-                        projected_value = float(projected_value.replace('(', '').replace(')', '').replace('$', '').replace(',', '').strip())
+        try:
+            # Clean and convert values
+            if "(" in current_value or "(" in projected_value:
+                current_value = float(current_value.replace('(', '').replace(')', '').replace('$', '').replace(',', '').strip())
+                projected_value = float(projected_value.replace('(', '').replace(')', '').replace('$', '').replace(',', '').strip())
 
-                        result["Current"]["data"][item] = round(-current_value, 2)
-                        result["Projected"]["data"][item] = round(-projected_value, 2)
-                    else:
-                        current_value = float(current_value.replace('(', '').replace(')', '').replace('$', '').replace(',', '').strip())
-                        projected_value = float(projected_value.replace('(', '').replace(')', '').replace('$', '').replace(',', '').strip())
-                        result["Current"]["data"][item] = round(current_value, 2)
-                        result["Projected"]["data"][item] = round(projected_value, 2)
+                result[f"current_{current_year}"][standard_field] = round(-current_value, 2)
+                result[f"projected_{projected_year}"][standard_field] = round(-projected_value, 2)
+            
+            else:
+                current_value = float(current_value.replace('(', '').replace(')', '').replace('$', '').replace(',', '').strip())
+                projected_value = float(projected_value.replace('(', '').replace(')', '').replace('$', '').replace(',', '').strip())
+                result[f"current_{current_year}"][standard_field] = round(current_value, 2)
+                result[f"projected_{projected_year}"][standard_field] = round(projected_value, 2)
                         
-            except ValueError:
-                    continue        
+        except ValueError:
+            continue        
                     
     return result            
     # print(result)
 
-def extract_dict_to_json():
-    data = extract_data_to_dict()
+def extract_dict_to_json(file_name):
+    data = extract_data_to_dict(file_name)
     if data:
-        with open("output_filtered.json", "w", encoding="utf-8") as file:
+        json_path = os.path.join(TEMP_FOLDER, f"{file_name}.json")
+        with open(json_path, "w", encoding="utf-8") as file:
             json.dump(data, file, indent=4)
 
-extract_dict_to_json()    
+# extract_dict_to_json()    
+
 
