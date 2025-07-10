@@ -12,9 +12,12 @@ import re
 import base64
 from datetime import datetime
 import io
-# from fpdf import FPDF
-import logging
+from fpdf import FPDF
+from utils.logs import setup_logger 
+from utils import calculate as calc
 from utils import doc_converter as dc
+from utils.general import STANDARDS, find_value, FIELD_MAPPINGS, get_status
+
 
 # Set page configuration
 st.set_page_config(
@@ -39,136 +42,9 @@ CUSTOMER_INFORMATION = {}
 AUDITED_DATA = {}
 PROJECTED_DATA = {}
 
-# Benchmark standards for ratios
-STANDARDS = {
-    "EBITDA": {
-        "positive": {"min": 0, "max": float('inf'), "message": "Positive EBITDA indicates the company is operationally profitable", "color": "green"},
-        "negative": {"min": float('-inf'), "max": 0, "message": "Negative EBITDA indicates operational losses", "color": "red"}
-    },
-    "Leverage Ratio": {
-        "strong": {"min": 0, "max": 4, "message": "Good leverage level (≤ 4)", "color": "green"},
-        "high": {"min": 4, "max": float('inf'), "message": "High leverage level (> 4)", "color": "red"},
-        "weak": {"min": float('-inf'), "max": 0, "message": "Negative leverage level", "color": "red"}
-    },
-    "Gear Ratio": {
-        "strong": {"min": 0, "max": 0.5, "message": "Low gearing (≤ 0.5) – Strong financial structure", "color": "green"},
-        "moderate": {"min": 0.5, "max": 1.0, "message": "Moderate gearing (0.5 – 1.0) – Acceptable leverage", "color": "yellow"},
-        "high": {"min": 1.0, "max": float('inf'), "message": "High gearing (> 1.0) – Risk of over-leverage", "color": "red"},
-        "invalid": {"min": float('-inf'),"max": 0, "message": "Negative gearing ratio – Check input values", "color": "red"}
-    },
-    "ICR": {
-        "strong": {"min": 1.0, "max": float('inf'), "message": "Sufficient ability to cover interest expenses (> 1)", "color": "yellow"},
-        "high": {"min": 1.5, "max": float('inf'), "message": "High ability to cover interest expenses (> 1.5)", "color": "green"},
-        "weak": {"min": float('-inf'), "max": 1.0, "message": "Insufficient ability to cover interest expenses (< 1)", "color": "red"}
-    },
-    "DSCR": {
-        "strong": {"min": 1.0, "max": float('inf'), "message": "Sufficient ability to service debt (> 1)", "color": "yellow"},
-        "high": {"min": 1.5, "max": float('inf'), "message": "High ability to service debt (> 1.5)", "color": "green"},
-        "weak": {"min": float('-inf'), "max": 1.0, "message": "Insufficient ability to service debt (< 1)", "color": "red"}
-    },
-    "CR": {
-        "strong": {"min": 1.0, "max": 1.5, "message": "Good short-term liquidity (1-1.5)", "color": "yellow"},
-        "high": {"min": 1.5, "max": float('inf'), "message": "High short-term liquidity (> 1.5)", "color": "green"},
-        "weak": {"min": float('-inf'), "max": 1.0, "message": "Weak short-term liquidity (< 1)", "color": "red"}
-    },
-    "QR": {
-        "strong": {"min": 1.0, "max": float('inf'), "message": "Good quick liquidity (> 1)", "color": "yellow"},
-        "high": {"min": 1.5, "max": float('inf'), "message": "High quick liquidity (> 1.5)", "color": "green"},
-        "weak": {"min": float('-inf'), "max": 1.0, "message": "Weak quick liquidity (< 1)", "color": "red"}
-    }
-}
-
-# Load the config file
-def load_config():
-    config_path = "financial_mappings.json"  # Path JSON file
-    if os.path.exists(config_path):
-        with open(config_path, "r") as f:
-            return json.load(f)["field_mappings"]
-    else:
-        st.error("Config file not found")
-        return None
-
-# Initialize field mappings
-FIELD_MAPPINGS = load_config()
-
-def setup_logger(log_dir="logs"):
-    """Set up logger to record app activities and errors"""
-    
-    # Create logs directory if it doesn't exist
-    os.makedirs(log_dir, exist_ok=True)
-    
-    # Create a unique log filename with timestamp
-    current_time = datetime.now().strftime("%Y%m%d_%H")
-    log_filename = os.path.join(log_dir, f"streamlit_app_{current_time}.log")
-    
-    # Configure the root logger
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
-    
-    # Remove existing handlers to avoid duplicates
-    for handler in logger.handlers[:]:
-        logger.removeHandler(handler)
-    
-    # Create file handler for logging to a file
-    file_handler = logging.FileHandler(log_filename)
-    file_handler.setLevel(logging.INFO)
-    
-    # Create console handler for logging to console
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.WARNING)  # Only warnings and errors to console
-    
-    # Create a formatter and add it to the handlers
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(funcName)s -- %(message)s')
-    file_handler.setFormatter(formatter)
-    console_handler.setFormatter(formatter)
-    
-    # Add the handlers to the logger
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
-    
-    return logger
 
 logger = setup_logger()
 
-def find_value(data, field_options):
-    """
-    Find value in data using various possible field names, with case-insensitive matching.
-    Prioritizes non-zero values when multiple field matches are found.
-    """
-    # Create a case-insensitive and whitespace-normalized version of the data keys
-    normalized_data = {}
-    for key, value in data.items():
-        normalized_key = key.strip().lower()
-        normalized_data[normalized_key] = value
-    
-    found_value = 0
-    
-    # Check for each field option with normalization
-    for option in field_options:
-        # Check direct match first
-        if option in data:
-            # If we find a non-zero value, return it immediately
-            if data[option] != 0:
-                return data[option]
-            # Otherwise, record that we found a value (even if zero)
-            found_value = data[option]
-        
-        # Check normalized match
-        normalized_option = option.strip().lower()
-        if normalized_option in normalized_data:
-            # If we find a non-zero value, return it immediately
-            if normalized_data[normalized_option] != 0:
-                return normalized_data[normalized_option]
-            # Otherwise, record that we found a value (even if zero)
-            found_value = normalized_data[normalized_option]
-    
-    return found_value  # Return the found value (or 0 if nothing found)
-
-def safe_division(numerator, denominator):
-    """Safely divide two numbers, handling zero division."""
-    if denominator == 0:
-        return float('nan')
-    return numerator / denominator
 
 def normal_page():
     # Balance Sheet: Statement of Financial Position
@@ -245,97 +121,6 @@ def normal_page():
         # st.code(calculations,language="json")
         st.code(required_fields,language="json", wrap_lines=True)
     
-# TODO: -ve EBITDA: do not proceed with calculations
-# TODO: Total Assets is not equal to Total Liabilities + Equity: do not proceed with calculations
-def calculate_ebitda(operating_profit, interest_expense, depreciation, amortization, taxation,profit_after_tax, administration_expense):
-    """
-    Calculate EBITDA (Earnings Before Interest, Taxes, Depreciation, and Amortization)
-    """
-    
-    # CASE 1:
-    operating_profit = abs(operating_profit) # profit/loss (Before)
-    interest_expense = abs(interest_expense)
-    depreciation = abs(depreciation)
-    amortization = abs(amortization)
-    taxation = abs(taxation)
-    administration_expense = abs(administration_expense)
-
-    # return operating_profit + interest_expense + depreciation + amortization
-    return profit_after_tax + taxation + interest_expense + depreciation + administration_expense
-
-def calculate_leverage_ratio(total_liabilities, total_equity):
-    """Calculate Leverage Ratio (Total Liabilities / Total Equity)."""
-    return safe_division(total_liabilities, total_equity)
-
-def calculate_gear_ratio(term_loan, total_equity):
-    """Calculate Gear Ratio (Term Loan and Finance / Total Equity)."""
-    total_equity = abs(total_equity)
-    if not isinstance(total_equity,(int,float)):
-        return st.error("Data is not complete (total_equity is missing)")
-    
-    return safe_division(term_loan, total_equity)
-
-# TODO: ICR
-def calculate_icr(interest_expense, depreciation, amortization, operating_profit):
-    """Calculate Interest Coverage Ratio (EBIT / Interest Expense)."""
-    # ebitda = calculate_ebitda(data)
-    # if not isinstance(ebitda,(int,float)):
-    #     return st.error("Could not proceed with ICR calculation (EBITDA is missing)")
-    
-    if not isinstance(interest_expense,(int,float)):
-        return st.error("Could not proceed with ICR calculation (Interest Expense is missing)")
-    abs_interest_expense = abs(interest_expense)
-    # Case: 1
-    # return safe_division(ebitda, interest_expense)
-
-    # Case: 2
-    val = abs(operating_profit)-(abs_interest_expense+abs(amortization)+abs(depreciation))
-
-    return safe_division(val, interest_expense)
-
-def calculate_dscr(interest_expense, depreciation, amortization, operating_profit, principal_repayment=0):
-    """Calculate Debt Service Coverage Ratio (EBITDA / (Interest Expense + Principal Repayment))."""
-
-    # Case 1:
-    # ebitda = calculate_ebitda(data)
-    debt_service = interest_expense + principal_repayment
-    # return safe_division(ebitda, debt_service)
-
-    # Case: 2
-    abs_interest_expense = abs(interest_expense)
-    val = abs(operating_profit)-(abs_interest_expense+abs(amortization)+abs(depreciation))
-
-    return safe_division(val,debt_service)
-
-def calculate_cr(current_assets, current_liabilities):
-    """Calculate Current Ratio (Current Assets / Current Liabilities)."""
-
-    return safe_division(current_assets, current_liabilities)
-
-def calculate_qr(current_assets, current_liabilities, inventory=0):
-    """Calculate Quick Ratio ((Current Assets - Inventory) / Current Liabilities)."""
-    if not isinstance(inventory,(int,float)):
-        inventory = 0
-    
-    return safe_division((current_assets - inventory), current_liabilities)
-
-def get_status(ratio_type, value):
-    """Determine status of ratio based on standards with range support."""
-    if pd.isna(value):
-        return "Invalid", "Unable to calculate ratio", "red"
-        # return "Invalid", "Unable to calculate ratio (division by zero or missing data)", "gray"
-    
-    # Get standards for this ratio type
-    standards = STANDARDS[ratio_type]   # update with balancesheet and ratio formula.
-    
-    # Check each category's range
-    for category, criteria in standards.items():
-        if criteria["min"] <= value < criteria["max"]:
-            return category, criteria["message"], criteria["color"]
-    
-    # Default case (should not reach here if standards are properly defined)
-    return "Unknown", "Unable to determine status", "gray"
-
 def display_metric(label, value, status, message, color):
     """Display a metric with appropriate color and message."""
 
@@ -353,117 +138,15 @@ def display_metric(label, value, status, message, color):
     else:
         st.write(f"**{label}:** {formatted_value} | **Status:** {status.capitalize()} | ***{message}***")
 
-def extract_year_from_key(key):
-    """Extract year from a key like 'audited-2023' or 'projected-2025'."""
-    match = re.search(r'(\d{4})', key)
-    if match:
-        return int(match.group(1))
-    return 0
-
-def is_audited(key):
-    """
-    Check if a key represents audited data.
-    AUDIT or Current
-    """
-
-    audited = key.lower().startswith('audit')
-    if not audited:
-        audited = key.lower().startswith('current')
-
-    return audited
-
-def is_projected(key):
-    """Check if a key represents projected data. Project or Current """
-
-    projected = key.lower().startswith('project')
-    if not projected:
-        projected = key.lower().startswith('previous')
-
-    return projected
-
-# Function to format a float value as Nepali currency
-def nepali_format(n):
-    n = int(n)
-    s = str(n)
-    if len(s) <= 3:
-        return float(s)
-    else:
-        last3 = s[-3:]
-        rest = s[:-3]
-        parts = []
-        while len(rest) > 2:
-            parts.insert(0, rest[-2:])
-            rest = rest[:-2]
-        if rest:
-            parts.insert(0, rest)
-        return ','.join(parts + [last3])
-
-def calculate_ratios_for_data(data, principal_repayment=0):
-    """Calculate all financial ratios for a given data set."""
-
-    # print(f"calculate_ratios_for_data - {principal_repayment}")
-    logger.info(f"Data :{data}")
-    # PL
-    operating_profit = find_value(data, FIELD_MAPPINGS["Net Operating Profit"])
-    interest_expense = find_value(data, FIELD_MAPPINGS["Interest Expense"])
-    depreciation = find_value(data, FIELD_MAPPINGS["Depreciation"])
-    amortization = find_value(data, FIELD_MAPPINGS["Amortization"])
-    taxation = find_value(data, FIELD_MAPPINGS["Taxation"])
-    administration_expense = find_value(data, FIELD_MAPPINGS["Administration Expenses"])
-    profit_after_tax = find_value(data,FIELD_MAPPINGS["Profit After Tax"])
-
-    #BS
-    total_liabilities = find_value(data, FIELD_MAPPINGS["Total Liabilities"])
-    current_liabilities = find_value(data, FIELD_MAPPINGS["Total Current Liabilities"])
-    total_equity = find_value(data, FIELD_MAPPINGS["Total Equity"])
-    current_assets = find_value(data, FIELD_MAPPINGS["Total Current Assets"])
-
-    # total_liabilities_equity = find_value(data, FIELD_MAPPINGS["total_liabilities_equity"]) # Can be removed
-    # non_current_liabilities = find_value(data, FIELD_MAPPINGS["total_non_current_liabilities"]) # Can be removed
-    
-    # if total_liabilities == 0:
-    #     total_liabilities = current_liabilities + non_current_liabilities
-
-    # if total_liabilities == 0:
-    #     total_liabilities = total_liabilities_equity - total_equity
-    
-    # if total_equity == 0:
-    #     total_equity = total_liabilities_equity - total_liabilities
-
-    term_loan = find_value(data, FIELD_MAPPINGS["Term Loan"]) # Long term Debt
-    inventory = find_value(data, FIELD_MAPPINGS["Inventory"])
-
-
-    ratios = {
-        "EBITDA": {"value": calculate_ebitda(operating_profit, interest_expense, depreciation, amortization, taxation, profit_after_tax, administration_expense)},
-        "Leverage Ratio": {"value": calculate_leverage_ratio(total_liabilities, total_equity)},
-        "Gear Ratio": {"value": calculate_gear_ratio(term_loan, total_equity)},
-        "ICR": {"value": calculate_icr(interest_expense, depreciation, amortization, operating_profit)},
-        "DSCR": {"value": calculate_dscr(interest_expense, depreciation, amortization, operating_profit, principal_repayment)},
-        "CR": {"value": calculate_cr(current_assets, current_liabilities)},
-        "QR": {"value": calculate_qr(current_assets, current_liabilities, inventory)}
-    }
-    
-    # Determine status for each ratio
-    for ratio_name in ratios:
-        ratios[ratio_name]["status"], ratios[ratio_name]["message"], ratios[ratio_name]["color"] = get_status(
-            ratio_name, ratios[ratio_name]["value"]
-        )
-    
-    # print(f"calculate_ratios_for_data - Ratios: {[(ratio_name,ratios[ratio_name]['value']) for ratio_name in ratios]}")
-    # print(f"{'***********'*2}")
-    logger.info(f"Ratios: {ratios}")
-    return ratios
-
 def create_multi_year_chart(years_data, ratio_name):
     """Create a chart showing a specific ratio across multiple years."""
     # print(f"Creating chart for {ratio_name}..")
     years = list(years_data.keys())
-    years.sort(key=extract_year_from_key)
+    years.sort(key=dc.extract_year_from_key)
     
     # Separate audited and projected data
-    audited_years = [y for y in years if is_audited(y)]
-    projected_years = [y for y in years if is_projected(y)]
+    audited_years = [y for y in years if dc.is_audited(y)]
+    projected_years = [y for y in years if dc.is_projected(y)]
 
     # TODO: Audited Years
     # Extract values for the specified ratio
@@ -615,21 +298,21 @@ def perform_stress_test(data, stress_factors):
     
     # Calculate ratios for original and stressed data
     original_ratios = {
-        "EBITDA": calculate_ebitda(data),
-        "Leverage Ratio": calculate_leverage_ratio(data),
-        "ICR": calculate_icr(data),
-        "DSCR": calculate_dscr(data),
-        "CR": calculate_cr(data),
-        "QR": calculate_qr(data)
+        "EBITDA": calc.calculate_ebitda(data),
+        "Leverage Ratio": calc.calculate_leverage_ratio(data),
+        "ICR": calc.calculate_icr(data),
+        "DSCR": calc.calculate_dscr(data),
+        "CR": calc.calculate_cr(data),
+        "QR": calc.calculate_qr(data)
     }
     
     stressed_ratios = {
-        "EBITDA": calculate_ebitda(stressed_data),
-        "Leverage Ratio": calculate_leverage_ratio(stressed_data),
-        "ICR": calculate_icr(stressed_data),
-        "DSCR": calculate_dscr(stressed_data),
-        "CR": calculate_cr(stressed_data),
-        "QR": calculate_qr(stressed_data)
+        "EBITDA": calc.calculate_ebitda(stressed_data),
+        "Leverage Ratio": calc.calculate_leverage_ratio(stressed_data),
+        "ICR": calc.calculate_icr(stressed_data),
+        "DSCR": calc.calculate_dscr(stressed_data),
+        "CR": calc.calculate_cr(stressed_data),
+        "QR": calc.calculate_qr(stressed_data)
     }
     
     return {
@@ -1213,9 +896,9 @@ def get_repayment_values(all_years_data_keys):
                 repayment_values = {year: all_years_value for year in all_years_data_keys}
             else:
                 # Group years by type (audited vs projected)
-                audited_years = sorted([y for y in all_years_data_keys if is_audited(y)], key=extract_year_from_key)
-                projected_years = sorted([y for y in all_years_data_keys if is_projected(y)], key=extract_year_from_key)
-                other_years = [y for y in all_years_data_keys if not is_audited(y) and not is_projected(y)]
+                audited_years = sorted([y for y in all_years_data_keys if dc.is_audited(y)], key=dc.extract_year_from_key)
+                projected_years = sorted([y for y in all_years_data_keys if dc.is_projected(y)], key=dc.extract_year_from_key)
+                other_years = [y for y in all_years_data_keys if not dc.is_audited(y) and not dc.is_projected(y)]
                 
                 # Show projected years first (most likely to need repayment values)
                 if projected_years:
@@ -1398,7 +1081,7 @@ def audited_to_projected_trend(years_ratios):
                 
                 if not pd.isna(audited_value) and not pd.isna(projected_value):
                     change = projected_value - audited_value
-                    change_percent = safe_division(change, abs(audited_value)) * 100
+                    change_percent = calc.safe_division(change, abs(audited_value)) * 100
                     
                     trend_data.append({
                         "Ratio/Calculation": ratio_name,
@@ -1875,10 +1558,10 @@ def load_and_edit_yearly_data(all_years_data):
 
 def return_auditednprojected_years(years_ratios_keys):
     # years_ratios_keys = years_ratios.keys()
-    audited_years = [y for y in years_ratios_keys if is_audited(y)]
-    projected_years = [y for y in years_ratios_keys if is_projected(y)]
-    audited_years.sort(key=extract_year_from_key)
-    projected_years.sort(key=extract_year_from_key)
+    audited_years = [y for y in years_ratios_keys if dc.is_audited(y)]
+    projected_years = [y for y in years_ratios_keys if dc.is_projected(y)]
+    audited_years.sort(key=dc.extract_year_from_key)
+    projected_years.sort(key=dc.extract_year_from_key)
     if not audited_years:
         st.error("Please verify the docs uploaded to the system")
     if not audited_years:
@@ -2303,7 +1986,7 @@ def proceeding_steps(all_years_data, customer_data):
     years_ratios = {}
     for year_key, data in all_years_data.items():
         year_repayment = repayment_values.get(year_key, 0)    # # Calculate DSCR with the specific repayment value
-        years_ratios[year_key] = calculate_ratios_for_data(data, year_repayment) # TODO: CHECK EBITDA
+        years_ratios[year_key] = calc.calculate_ratios_for_data(data, year_repayment) # TODO: CHECK EBITDA
         
     # 1. Select Financial Statements to Analyze
     st.subheader("Select Financial Statements to Analyze")
@@ -2341,7 +2024,6 @@ def proceeding_steps(all_years_data, customer_data):
 
 def main():
     st.subheader("Preliminary Loan Decision Making") 
-
     # initialize session state for financial data
     if 'financial_data' not in st.session_state:
         st.session_state.financial_data = [
