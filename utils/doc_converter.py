@@ -7,7 +7,9 @@ import heapq
 import numpy as np
 import json
 import os
+from .logs import setup_logger
 
+logger = setup_logger()
 
 TEMP_FOLDER = "temp/"
 MARKDOWN = ".md"
@@ -259,6 +261,34 @@ def extract_dict_to_json(file_name):
         with open(json_path, "w", encoding="utf-8") as file:
             json.dump(data, file, indent=4)
 
-# extract_dict_to_json()    
+
+def extract_year_from_key(key):
+    """Extract year from a key like 'audited-2023' or 'projected-2025'."""
+    match = re.search(r'(\d{4})', key)
+    if match:
+        return int(match.group(1))
+    return 0
+
+
+def is_audited(key):
+    """
+    Check if a key represents audited data.
+    AUDIT or Current
+    """
+    audited = key.lower().startswith('audit')
+    if not audited:
+        audited = key.lower().startswith('current')
+
+    return audited
+
+
+def is_projected(key):
+    """Check if a key represents projected data. Project or Current """
+
+    projected = key.lower().startswith('project')
+    if not projected:
+        projected = key.lower().startswith('previous')
+
+    return projected
 
 
