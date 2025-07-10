@@ -5,10 +5,9 @@ from pathlib import Path
 import re
 import heapq
 import numpy as np
-import torch
 import json
 import os
-import tempfile
+
 
 TEMP_FOLDER = "temp/"
 MARKDOWN = ".md"
@@ -70,6 +69,8 @@ def pdf_to_md(file_object, file_name:str):
     # # Delete the Temporary PDF
     # os.remove(temp_pdf_path)    
 
+# === On plan using vision Language model ===
+
 def pdf_eocr(source):
 # Uncomment for only for GPU based systems
 
@@ -97,6 +98,8 @@ def pdf_eocr(source):
                 print(f"Text: {text} | Confidence: {confidence}")
 
 # pdf_eocr("pdfs/Shivam.pdf")
+
+# ===============================
 
 def parse_markdown(file_path):
     path = Path(file_path)
