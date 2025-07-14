@@ -330,9 +330,6 @@ def is_projected(key):
     return projected
 
 
-, line) and not re.match(r'^\s*\|?[\s\-|]+\|?\s*
-
-
 def check_years(header, year1, year2):
     """
     Identify the column indices of the two given years from the table header.
@@ -533,14 +530,6 @@ def is_projected(key):
 
     return projected
 
-
-, line)]
-        logger.info(f"Parsed {len(table_lines)} table lines from markdown.")
-        return table_lines
-
-    except Exception as e:
-        logger.error(f"Error parsing markdown file: {e}")
-        return []
 
 
 def check_years(header, year1, year2):
